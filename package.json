@@ -1,0 +1,36 @@
+{
+  "name": "brewlab",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:single": "tsc -b && vite build --mode single",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc -b",
+    "test:db": "bash supabase/tests/run.sh"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.10",
+    "jspdf": "^2.5.2",
+    "jspdf-autotable": "^3.8.4",
+    "lucide-react": "^0.460.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.1.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "vite-plugin-singlefile": "^2.1.0",
+    "vitest": "^3.0.5"
+  }
+}
