@@ -8,11 +8,10 @@ import type { RecipeStats } from '../domain/recipe';
 import { srmToHex } from '../domain/color';
 import { compareToStyle } from '../domain/style';
 import { findStyle } from '../data/styles';
-import { FERMENTABLE_CATEGORY_LABEL } from '../data/fermentables';
-import { MISC_USE_LABEL } from '../data/miscs';
 import type { Settings } from '../store/schema';
 import { saveFile } from '../ui/download';
-import { fmt, fmtSg, HOP_USE_LABEL, hopTimeLabel, massL, massS, METHOD_LABEL, temp, vol, MISC_TIME_UNIT } from '../ui/format';
+import { fmt, fmtSg, hopTimeLabel, massL, massS, miscTimeUnit, stageLabel, temp, vol } from '../ui/format';
+import { DEFAULT_LANG, dictFor, type Lang } from '../i18n';
 
 const INK: [number, number, number] = [31, 28, 25];
 const MUTED: [number, number, number] = [110, 103, 94];
@@ -30,7 +29,8 @@ export function pdfText(t: string): string {
     .replace(/[^\x00-\xFF–—•…]/g, '?');
 }
 
-export function buildRecipePdf(recipe: Recipe, stats: RecipeStats, settings: Settings): jsPDF {
+export function buildRecipePdf(recipe: Recipe, stats: RecipeStats, settings: Settings, lang: Lang = DEFAULT_LANG): jsPDF {
+  const t = dictFor(lang);
   const s = settings.unitSystem;
   const doc = new jsPDF({ unit: 'pt', format: s === 'us' ? 'letter' : 'a4' });
   const W = doc.internal.pageSize.getWidth();
@@ -44,13 +44,13 @@ export function buildRecipePdf(recipe: Recipe, stats: RecipeStats, settings: Set
   doc.setTextColor(...INK);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(22);
-  doc.text(pdfText(recipe.name || 'Untitled recipe'), M, y);
+  doc.text(pdfText(recipe.name || t.common.untitled), M, y);
   y += 18;
   const style = findStyle(recipe.styleId);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
   doc.setTextColor(...MUTED);
-  const meta = [style ? `${style.code} ${style.name}` : null, METHOD_LABEL[recipe.method], `${vol(recipe.batchVolumeL, s)} ${recipe.batchTarget === 'fermenter' ? 'into fermenter' : 'post-boil'}`, `${recipe.boilMinutes} min boil`, recipe.author ? `Brewer: ${recipe.author}` : null].filter(Boolean).join('  ·  ');
+  const meta = [style ? `${style.code} ${style.name}` : null, t.method[recipe.method], `${vol(recipe.batchVolumeL, s)} ${recipe.batchTarget === 'fermenter' ? t.pdf.intoFermenter : t.pdf.postBoil}`, t.pdf.boil(recipe.boilMinutes), recipe.author ? t.pdf.brewer(recipe.author) : null].filter(Boolean).join('  ·  ');
   doc.text(pdfText(meta), M, y);
   if (recipe.description) {
     y += 14;
@@ -66,8 +66,8 @@ export function buildRecipePdf(recipe: Recipe, stats: RecipeStats, settings: Set
     ['FG', fmtSg(stats.fg)],
     ['ABV', `${fmt(stats.abv, 1)}%`],
     ['IBU', fmt(stats.ibu, 0)],
-    ['Color (SRM)', fmt(stats.srm, 1)],
-    ['Efficiency', `${fmt(recipe.efficiencyPct, 0)}%`],
+    [t.pdf.colorSrm, fmt(stats.srm, 1)],
+    [t.pdf.efficiency, `${fmt(recipe.efficiencyPct, 0)}%`],
   ];
   const cw = (W - 2 * M) / cells.length;
   doc.setDrawColor(...LINE);
@@ -79,7 +79,7 @@ export function buildRecipePdf(recipe: Recipe, stats: RecipeStats, settings: Set
     doc.setFontSize(7.5);
     doc.setTextColor(...MUTED);
     doc.setFont('helvetica', 'bold');
-    doc.text(k.toUpperCase(), x + 10, y + 15);
+    doc.text(pdfText(k.toUpperCase()), x + 10, y + 15);
     doc.setFont('courier', 'bold');
     doc.setFontSize(14);
     doc.setTextColor(...INK);
@@ -93,7 +93,7 @@ export function buildRecipePdf(recipe: Recipe, stats: RecipeStats, settings: Set
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(...MUTED);
-  doc.text(`Estimated values. IBU: ${settings.ibuMethod === 'tinseth' ? 'Tinseth' : 'Rager'} · Color: ${settings.colorMethod[0].toUpperCase() + settings.colorMethod.slice(1)} · ABV: ${settings.abvMethod}. ${fmt(stats.ebc, 1)} EBC · BU:GU ${stats.buGu == null ? '–' : fmt(stats.buGu, 2)}`, M, y);
+  doc.text(pdfText(`${t.pdf.estimated(settings.ibuMethod === 'tinseth' ? 'Tinseth' : 'Rager', settings.colorMethod[0].toUpperCase() + settings.colorMethod.slice(1), t.stats.abvMethod[settings.abvMethod])} ${fmt(stats.ebc, 1)} EBC · BU:GU ${stats.buGu == null ? '–' : fmt(stats.buGu, 2)}`), M, y);
   y += 14;
 
   const table = (title: string, head: string[], body: (string | number)[][], rightCols: number[] = []) => {
@@ -108,7 +108,7 @@ export function buildRecipePdf(recipe: Recipe, stats: RecipeStats, settings: Set
     doc.text(pdfText(title.toUpperCase()), M, y + 10);
     autoTable(doc, {
       startY: y + 16,
-      head: [head],
+      head: [head.map(pdfText)],
       body: body.map((r) => r.map((c) => pdfText(String(c)))),
       margin: { left: M, right: M },
       theme: 'plain',
@@ -121,57 +121,57 @@ export function buildRecipePdf(recipe: Recipe, stats: RecipeStats, settings: Set
   };
 
   table(
-    'Fermentables',
-    ['Fermentable', 'Type', 'Amount', '%', 'Color', 'Added', 'Points'],
+    t.view.fermentables,
+    t.pdf.fermHead,
     recipe.fermentables.map((f) => {
       const st = stats.fermentables.find((x) => x.id === f.id);
-      return [f.name, FERMENTABLE_CATEGORY_LABEL[f.category], massL(f.amountKg, s), `${fmt(st?.weightPct ?? 0, 1)}%`, `${fmt(f.colorLovibond, 1)} °L`, f.stage === 'mash' ? (recipe.method === 'extract' ? 'Steep' : 'Mash') : f.stage === 'boil' ? 'Boil' : 'Fermenter', fmt(st?.ogPoints ?? 0, 1)];
+      return [f.name, t.fermCategory[f.category], massL(f.amountKg, s), `${fmt(st?.weightPct ?? 0, 1)}%`, `${fmt(f.colorLovibond, 1)} °L`, stageLabel(f.stage, recipe.method, t), fmt(st?.ogPoints ?? 0, 1)];
     }),
     [2, 3, 4, 6],
   );
   table(
-    'Hops',
-    ['Hop', 'Alpha', 'Amount', 'Use', 'Time', 'Form', 'IBU'],
-    recipe.hops.map((h) => [h.name, `${fmt(h.alphaPct, 1)}%`, massS(h.amountG, s), HOP_USE_LABEL[h.use], hopTimeLabel(h, s), h.form, fmt(stats.hops.find((x) => x.id === h.id)?.ibu ?? 0, 1)]),
+    t.view.hops,
+    t.pdf.hopHead,
+    recipe.hops.map((h) => [h.name, `${fmt(h.alphaPct, 1)}%`, massS(h.amountG, s), t.hopUse[h.use], hopTimeLabel(h, s, t), t.hopForm[h.form], fmt(stats.hops.find((x) => x.id === h.id)?.ibu ?? 0, 1)]),
     [1, 2, 6],
   );
   table(
-    'Yeast',
-    ['Strain', 'Lab', 'Form', 'Attenuation', 'Temperature', 'Packs', 'Starter'],
-    recipe.yeasts.map((yy) => [yy.name, [yy.lab, yy.product].filter(Boolean).join(' '), yy.form, `${fmt(yy.attenuationPct, 0)}%`, `${temp(yy.tempMinC, s)}–${temp(yy.tempMaxC, s)}`, fmt(yy.packs, 1), yy.starter ? 'Yes' : 'No']),
+    t.view.yeast,
+    t.pdf.yeastHead,
+    recipe.yeasts.map((yy) => [yy.name, [yy.lab, yy.product].filter(Boolean).join(' '), t.yeastForm[yy.form], `${fmt(yy.attenuationPct, 0)}%`, `${temp(yy.tempMinC, s)}–${temp(yy.tempMaxC, s)}`, fmt(yy.packs, 1), yy.starter ? t.common.yes : t.common.no]),
     [3, 5],
   );
   table(
-    'Other ingredients',
-    ['Ingredient', 'Added', 'Time', 'Amount'],
-    recipe.miscs.map((m) => [m.name, MISC_USE_LABEL[m.use], MISC_TIME_UNIT[m.use] ? `${m.time} ${MISC_TIME_UNIT[m.use]}` : '—', `${m.amount} ${m.unit}`]),
+    t.view.misc,
+    t.pdf.miscHead,
+    recipe.miscs.map((m) => [m.name, t.miscUse[m.use], miscTimeUnit(m.use, t) ? `${m.time} ${miscTimeUnit(m.use, t)}` : '—', `${m.amount} ${m.unit}`]),
     [2, 3],
   );
-  table(recipe.method === 'extract' ? 'Steeping' : 'Mash schedule', ['Step', 'Temperature', 'Time'], recipe.mashSteps.map((m) => [m.name, temp(m.tempC, s), `${m.minutes} min`]), [1, 2]);
-  table('Fermentation', ['Step', 'Temperature', 'Days'], recipe.fermentationSteps.map((f) => [f.name, temp(f.tempC, s), `${f.days}`]), [1, 2]);
+  table(recipe.method === 'extract' ? t.view.steeping : t.view.mashSchedule, t.view.stepHead, recipe.mashSteps.map((m) => [m.name, temp(m.tempC, s), `${m.minutes} ${t.common.min}`]), [1, 2]);
+  table(t.view.fermentation, t.view.fermStepHead, recipe.fermentationSteps.map((f) => [f.name, temp(f.tempC, s), `${f.days}`]), [1, 2]);
 
   const v = stats.volumes;
   const volRows: [string, string][] = [
-    ['Total water', vol(v.totalWaterL, s)],
+    [t.vols.totalWater, vol(v.totalWaterL, s)],
     ...(recipe.method === 'extract'
-      ? ([['Steep water', vol(v.mashWaterL, s)]] as [string, string][])
+      ? ([[t.vols.steepWater, vol(v.mashWaterL, s)]] as [string, string][])
       : ([
-          [recipe.method === 'biab' ? 'Full-volume mash water' : 'Strike water', vol(v.mashWaterL, s)],
-          ...(recipe.method === 'biab' ? [] : [['Sparge water', vol(v.spargeWaterL, s)] as [string, string]]),
-          ['Strike temperature', v.strikeTempC == null ? '–' : temp(v.strikeTempC, s)],
+          [recipe.method === 'biab' ? t.pdf.fullVolumeMashWater : t.vols.strikeWater, vol(v.mashWaterL, s)],
+          ...(recipe.method === 'biab' ? [] : [[t.vols.spargeWater, vol(v.spargeWaterL, s)] as [string, string]]),
+          [t.vols.strikeTemp, v.strikeTempC == null ? '–' : temp(v.strikeTempC, s)],
         ] as [string, string][])),
-    ['Pre-boil volume', vol(v.preBoilL, s)],
-    ['Pre-boil gravity', fmtSg(stats.preBoilGravity)],
-    ['Post-boil volume (hot)', vol(v.postBoilHotL, s)],
-    ['Into fermenter', vol(v.intoFermenterL, s)],
-    ['Packaged (est.)', vol(v.packagedL, s)],
+    [t.pdf.preBoilVolume, vol(v.preBoilL, s)],
+    [t.stats.preBoilGravity, fmtSg(stats.preBoilGravity)],
+    [t.pdf.postBoilVolume, vol(v.postBoilHotL, s)],
+    [t.vols.intoFermenter, vol(v.intoFermenterL, s)],
+    [t.pdf.packagedEst, vol(v.packagedL, s)],
   ];
-  table('Water and volumes', ['', 'Planned'], volRows, [1]);
+  table(t.view.waterVolumes, ['', t.pdf.planned], volRows, [1]);
 
   if (style) {
     const cmp = compareToStyle(stats, style);
     const f = (m: string, n: number) => (m === 'og' || m === 'fg' ? fmtSg(n) : m === 'abv' ? `${fmt(n, 1)}%` : fmt(n, m === 'srm' ? 1 : 0));
-    table(`Style: ${style.code} ${style.name} (BJCP 2021)`, ['', 'Recipe', 'Style range', ''], cmp.map((c) => [c.metric.toUpperCase(), f(c.metric, c.value), `${f(c.metric, c.range.min)} – ${f(c.metric, c.range.max)}`, c.status === 'in' ? 'In range' : c.status === 'low' ? 'Low' : 'High']), [1, 2]);
+    table(t.pdf.style(`${style.code} ${style.name}`), t.pdf.styleHead, cmp.map((c) => [c.metric.toUpperCase(), f(c.metric, c.value), `${f(c.metric, c.range.min)} – ${f(c.metric, c.range.max)}`, c.status === 'in' ? t.common.inRange : c.status === 'low' ? t.common.low : t.common.high]), [1, 2]);
   }
 
   if (recipe.notes.trim()) {
@@ -181,7 +181,7 @@ export function buildRecipePdf(recipe: Recipe, stats: RecipeStats, settings: Set
     }
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
-    doc.text('NOTES', M, y + 10);
+    doc.text(t.pdf.notes, M, y + 10);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9.5);
     const lines = doc.splitTextToSize(pdfText(recipe.notes), W - 2 * M);
@@ -196,17 +196,17 @@ export function buildRecipePdf(recipe: Recipe, stats: RecipeStats, settings: Set
     doc.setFontSize(7.5);
     doc.setTextColor(...MUTED);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Brewlab · ${new Date().toLocaleDateString()}`, M, H - 24);
+    doc.text(`Brewlab · ${new Date().toLocaleDateString(t.locale)}`, M, H - 24);
     doc.text(`${i} / ${pages}`, W - M, H - 24, { align: 'right' });
   }
   return doc;
 }
 
 export function pdfFileName(recipe: Recipe): string {
-  const base = (recipe.name || 'recipe').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'recipe';
+  const base = (recipe.name || 'recipe').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'recipe';
   return `${base}.pdf`;
 }
 
-export function downloadRecipePdf(recipe: Recipe, stats: RecipeStats, settings: Settings) {
-  return saveFile(buildRecipePdf(recipe, stats, settings).output('blob'), pdfFileName(recipe));
+export function downloadRecipePdf(recipe: Recipe, stats: RecipeStats, settings: Settings, lang: Lang) {
+  return saveFile(buildRecipePdf(recipe, stats, settings, lang).output('blob'), pdfFileName(recipe));
 }

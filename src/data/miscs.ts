@@ -38,25 +38,6 @@ export const MISCS: MiscCatalogItem[] = [
   m('mango', 'Mango purée', 'fruit', 'secondary', 5, 1.5, 'kg'),
 ];
 
-export const MISC_USE_LABEL: Record<MiscUse, string> = {
-  mash: 'Mash',
-  boil: 'Boil',
-  whirlpool: 'Whirlpool',
-  primary: 'Primary',
-  secondary: 'Secondary',
-  bottling: 'Bottling',
-};
 
-export const MISC_TYPE_LABEL: Record<MiscType, string> = {
-  spice: 'Spice',
-  fruit: 'Fruit',
-  flavor: 'Flavor',
-  fining: 'Fining',
-  'water-agent': 'Water agent',
-  acid: 'Acid',
-  nutrient: 'Nutrient',
-  sugar: 'Sugar',
-  other: 'Other',
-};
 
 export const MISC_UNITS: MiscUnit[] = ['g', 'kg', 'oz', 'lb', 'mL', 'L', 'fl oz', 'tsp', 'tbsp', 'each'];

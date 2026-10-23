@@ -6,6 +6,7 @@ import type { UnitSystem } from '../domain/units';
 import { fmt, fmtSg, massL, temp, vol } from './format';
 import { Notice } from './common';
 import type { Settings } from '../store/schema';
+import { useI18n } from '../i18n';
 
 const METRIC_LABEL: Record<StyleComparison['metric'], string> = { og: 'OG', fg: 'FG', abv: 'ABV', ibu: 'IBU', srm: 'SRM' };
 
@@ -17,11 +18,12 @@ function fmtMetric(m: StyleComparison['metric'], v: number) {
 
 /** Horizontal range bar: the style's range is the green band, the pin is the recipe. */
 function RangeRow({ c }: { c: StyleComparison }) {
+  const { t } = useI18n();
   const span = c.range.max - c.range.min || 1;
   const lo = Math.min(c.range.min - span * 0.6, c.value);
   const hi = Math.max(c.range.max + span * 0.6, c.value);
   const pos = (v: number) => ((v - lo) / (hi - lo)) * 100;
-  const label = `${METRIC_LABEL[c.metric]} ${fmtMetric(c.metric, c.value)}, style range ${fmtMetric(c.metric, c.range.min)} to ${fmtMetric(c.metric, c.range.max)}, ${c.status === 'in' ? 'in range' : c.status === 'low' ? 'below range' : 'above range'}`;
+  const label = t.stats.rangeAria(METRIC_LABEL[c.metric], fmtMetric(c.metric, c.value), fmtMetric(c.metric, c.range.min), fmtMetric(c.metric, c.range.max), c.status);
   return (
     <div className="style-row" role="img" aria-label={label}>
       <span className="k">{METRIC_LABEL[c.metric]}</span>
@@ -38,7 +40,7 @@ function RangeRow({ c }: { c: StyleComparison }) {
       </div>
       <span className={`val ${c.status === 'in' ? 'status-in' : 'status-out'}`}>
         {fmtMetric(c.metric, c.value)}
-        <span className="sr-only">{c.status === 'in' ? ' in range' : c.status === 'low' ? ' below range' : ' above range'}</span>
+        <span className="sr-only">{c.status === 'in' ? t.stats.srIn : c.status === 'low' ? t.stats.srLow : t.stats.srHigh}</span>
         <span aria-hidden="true">{c.status === 'in' ? '' : c.status === 'low' ? ' ↓' : ' ↑'}</span>
       </span>
     </div>
@@ -48,12 +50,13 @@ function RangeRow({ c }: { c: StyleComparison }) {
 const GRADIENT = `linear-gradient(90deg, ${[1, 3, 5, 8, 11, 15, 20, 26, 33, 40].map((s, i, a) => `${srmToHex(s)} ${(i / (a.length - 1)) * 100}%`).join(', ')})`;
 
 export function ColorStrip({ srm, ebc }: { srm: number; ebc: number }) {
+  const { t } = useI18n();
   const pos = Math.min(100, (Math.min(40, srm) / 40) * 100);
   return (
     <div className="color-strip">
-      <div className="glass" style={{ background: srmToHex(srm) }} role="img" aria-label={`Estimated color ${fmt(srm, 1)} SRM`} />
+      <div className="glass" style={{ background: srmToHex(srm) }} role="img" aria-label={t.stats.colorAria(fmt(srm, 1))} />
       <div className="srm-scale">
-        <div className="label">Color</div>
+        <div className="label">{t.stats.color}</div>
         <div className="srm-gradient" style={{ background: GRADIENT }} aria-hidden="true">
           <span className="mark" style={{ left: `calc(${pos}% - 1px)` }} />
         </div>
@@ -66,6 +69,7 @@ export function ColorStrip({ srm, ebc }: { srm: number; ebc: number }) {
 }
 
 export function StatsPanel({ stats, recipe, style, settings }: { stats: RecipeStats; recipe: Recipe; style: BeerStyle | null; settings: Settings }) {
+  const { t } = useI18n();
   const s: UnitSystem = settings.unitSystem;
   const v = stats.volumes;
   const comparisons = style ? compareToStyle(stats, style) : [];
@@ -77,70 +81,70 @@ export function StatsPanel({ stats, recipe, style, settings }: { stats: RecipeSt
       <section className="instrument" aria-labelledby="stats-title">
         <div className="instrument-head">
           <h2 id="stats-title" className="label" style={{ fontSize: '0.75rem' }}>
-            Estimated stats
+            {t.stats.title}
           </h2>
-          <span className="tag" title="Calculated from the recipe. Measured values are recorded on brew day.">
-            Estimate
+          <span className="tag" title={t.stats.estimateTip}>
+            {t.stats.estimate}
           </span>
         </div>
         <div className="readouts" aria-live="polite">
-          <Readout k="OG" v={fmtSg(stats.og)} sub={`${fmt((stats.og - 1) * 1000, 1)} pts`} />
-          <Readout k="FG" v={fmtSg(stats.fg)} sub={`${fmt(stats.attenuationPct, 0)}% att.${stats.attenuationAssumed ? '*' : ''}`} />
-          <Readout k="ABV" v={fmt(stats.abv, 1)} u="%" sub={settings.abvMethod === 'alternate' ? 'alternate' : 'standard'} />
+          <Readout k="OG" v={fmtSg(stats.og)} sub={`${fmt((stats.og - 1) * 1000, 1)} ${t.stats.pts}`} />
+          <Readout k="FG" v={fmtSg(stats.fg)} sub={`${fmt(stats.attenuationPct, 0)}% ${t.stats.att}${stats.attenuationAssumed ? '*' : ''}`} />
+          <Readout k="ABV" v={fmt(stats.abv, 1)} u="%" sub={t.stats.abvMethod[settings.abvMethod]} />
           <Readout k="IBU" v={fmt(stats.ibu, 0)} sub={settings.ibuMethod === 'tinseth' ? 'Tinseth' : 'Rager'} />
-          <Readout k="BU:GU" v={stats.buGu == null ? '–' : fmt(stats.buGu, 2)} sub="bitterness ratio" />
-          <Readout k="Efficiency" v={fmt(recipe.batchTarget === 'fermenter' ? stats.brewhouseEfficiencyPct : stats.kettleEfficiencyPct, 0)} u="%" sub={recipe.batchTarget === 'fermenter' ? 'brewhouse' : 'kettle'} />
+          <Readout k="BU:GU" v={stats.buGu == null ? '–' : fmt(stats.buGu, 2)} sub={t.stats.ratio} />
+          <Readout k={t.stats.efficiency} v={fmt(recipe.batchTarget === 'fermenter' ? stats.brewhouseEfficiencyPct : stats.kettleEfficiencyPct, 0)} u="%" sub={recipe.batchTarget === 'fermenter' ? t.stats.brewhouse : t.stats.kettle} />
         </div>
         <ColorStrip srm={stats.srm} ebc={stats.ebc} />
         <dl className="stat-list">
-          <dt className="group label">Volumes</dt>
-          <dt>Into fermenter</dt>
+          <dt className="group label">{t.stats.volumes}</dt>
+          <dt>{t.vols.intoFermenter}</dt>
           <dd>{vol(v.intoFermenterL, s)}</dd>
-          <dt>Post-boil (hot)</dt>
+          <dt>{t.vols.postBoilHot}</dt>
           <dd>{vol(v.postBoilHotL, s)}</dd>
-          <dt>Pre-boil</dt>
+          <dt>{t.vols.preBoil}</dt>
           <dd>{vol(v.preBoilL, s)}</dd>
-          <dt>Packaged</dt>
+          <dt>{t.vols.packaged}</dt>
           <dd>{vol(v.packagedL, s)}</dd>
-          <dt className="group label">Water</dt>
-          <dt>Total water</dt>
+          <dt className="group label">{t.stats.water}</dt>
+          <dt>{t.vols.totalWater}</dt>
           <dd>{vol(v.totalWaterL, s)}</dd>
           {isMash ? (
             <>
-              <dt>{recipe.method === 'biab' ? 'Full-volume mash' : 'Strike water'}</dt>
+              <dt>{recipe.method === 'biab' ? t.vols.fullVolumeMash : t.vols.strikeWater}</dt>
               <dd>{vol(v.mashWaterL, s)}</dd>
               {recipe.method !== 'biab' && (
                 <>
-                  <dt>Sparge water</dt>
+                  <dt>{t.vols.spargeWater}</dt>
                   <dd>{vol(v.spargeWaterL, s)}</dd>
                 </>
               )}
-              <dt>Strike temperature</dt>
+              <dt>{t.vols.strikeTemp}</dt>
               <dd>{v.strikeTempC == null ? '–' : temp(v.strikeTempC, s)}</dd>
             </>
           ) : (
             <>
-              <dt>Steep water</dt>
+              <dt>{t.vols.steepWater}</dt>
               <dd>{vol(v.mashWaterL, s)}</dd>
             </>
           )}
-          <dt className="group label">Ingredients</dt>
-          <dt>{isMash ? 'Grain bill' : 'Steeping grain'}</dt>
+          <dt className="group label">{t.stats.ingredients}</dt>
+          <dt>{isMash ? t.stats.grainBill : t.stats.steepingGrain}</dt>
           <dd>{massL(stats.totalGrainKg, s)}</dd>
-          <dt>Pre-boil gravity</dt>
+          <dt>{t.stats.preBoilGravity}</dt>
           <dd>{fmtSg(stats.preBoilGravity)}</dd>
-          <dt>{recipe.batchTarget === 'fermenter' ? 'Implied mash efficiency' : 'Brewhouse efficiency'}</dt>
+          <dt>{recipe.batchTarget === 'fermenter' ? t.stats.impliedMashEff : t.stats.brewhouseEff}</dt>
           <dd>{fmt(recipe.batchTarget === 'fermenter' ? stats.kettleEfficiencyPct : stats.brewhouseEfficiencyPct, 0)}%</dd>
           {stats.pitch && (
             <>
-              <dt>Yeast cells needed</dt>
-              <dd title={`${stats.pitch.rate} million cells / mL / °P (${stats.pitch.isLager ? 'lager' : 'ale'})`}>{fmt(stats.pitch.cellsBillions, 0)} B</dd>
+              <dt>{t.stats.cellsNeeded}</dt>
+              <dd title={t.stats.cellsTip(stats.pitch.rate, stats.pitch.isLager)}>{fmt(stats.pitch.cellsBillions, 0)} B</dd>
             </>
           )}
         </dl>
         {stats.attenuationAssumed && (
           <p className="xs faint" style={{ padding: '0 16px 12px' }}>
-            * Attenuation assumed until you add a yeast.
+            {t.stats.attAssumed}
           </p>
         )}
       </section>
@@ -152,7 +156,7 @@ export function StatsPanel({ stats, recipe, style, settings }: { stats: RecipeSt
               {style.code} {style.name}
             </h2>
             <span className={`tag ${inRange === comparisons.length ? 'accent' : ''}`}>
-              {inRange}/{comparisons.length} in range
+              {t.stats.inRangeCount(inRange, comparisons.length)}
             </span>
           </div>
           <div className="style-rows">
@@ -164,7 +168,7 @@ export function StatsPanel({ stats, recipe, style, settings }: { stats: RecipeSt
       ) : (
         <div className="instrument">
           <p className="small muted" style={{ padding: 16 }}>
-            Choose a style to compare this recipe against BJCP guideline ranges.
+            {t.stats.chooseStyle}
           </p>
         </div>
       )}
@@ -172,8 +176,8 @@ export function StatsPanel({ stats, recipe, style, settings }: { stats: RecipeSt
       {stats.warnings.length > 0 && (
         <div className="instrument">
           <div className="warnings" role="status">
-            {stats.warnings.map((w) => (
-              <Notice key={w}>{w}</Notice>
+            {stats.warnings.map((w, i) => (
+              <Notice key={i}>{t.warnings[w.code](w)}</Notice>
             ))}
           </div>
         </div>

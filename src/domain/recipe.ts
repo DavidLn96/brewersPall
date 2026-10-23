@@ -19,10 +19,12 @@
 import { abv, estimateFg, pointsToSg } from './gravity';
 import { hopUtilization, ibuFromUtilization } from './ibu';
 import { srmFromMcu, srmToEbc } from './color';
-import { calculateVolumes, type VolumeResult } from './volumes';
+import { calculateVolumes, type CalcWarning, type VolumeResult } from './volumes';
 import { cellsNeededBillions, LAGER_MAX_TEMP_C, pitchRate } from './yeast';
 import { kgToLb, lToGal, PPG_TO_PKL } from './units';
 import type { CalcOptions, Recipe } from './types';
+
+export type { CalcWarning };
 import { DEFAULT_CALC_OPTIONS } from './types';
 
 export const DEFAULT_ATTENUATION_PCT = 75;
@@ -66,11 +68,11 @@ export interface RecipeStats {
   fermentables: FermentableStat[];
   hops: HopStat[];
   pitch: { isLager: boolean; rate: number; cellsBillions: number } | null;
-  warnings: string[];
+  warnings: CalcWarning[];
 }
 
 export function calculateRecipe(recipe: Recipe, options: CalcOptions = DEFAULT_CALC_OPTIONS): RecipeStats {
-  const warnings: string[] = [];
+  const warnings: CalcWarning[] = [];
   const ferms = recipe.fermentables.filter((f) => f.amountKg > 0);
   const mashFerms = ferms.filter((f) => f.stage === 'mash');
   const kettleHopsG = recipe.hops
@@ -96,7 +98,7 @@ export function calculateRecipe(recipe: Recipe, options: CalcOptions = DEFAULT_C
   const kettleEff = recipe.batchTarget === 'kettle' ? eff : vFerm > 0 ? (eff * vCool) / vFerm : 0;
   const brewhouseEff = recipe.batchTarget === 'fermenter' ? eff : vCool > 0 ? (eff * vFerm) / vCool : 0;
   if (kettleEff > 1) {
-    warnings.push(`This brewhouse efficiency implies a mash efficiency of ${(kettleEff * 100).toFixed(0)}%, which is not possible. Lower the efficiency or reduce kettle losses.`);
+    warnings.push({ code: 'impossibleEfficiency', pct: kettleEff * 100 });
   }
 
   // Extract (points·L) per fermentable, and its concentration in the fermenter.
@@ -142,7 +144,7 @@ export function calculateRecipe(recipe: Recipe, options: CalcOptions = DEFAULT_C
   const attenuationAssumed = yeasts.length === 0;
   const attenuationPct = attenuationAssumed ? DEFAULT_ATTENUATION_PCT : Math.max(...yeasts.map((y) => y.attenuationPct));
   if (attenuationAssumed && ferms.length > 0) {
-    warnings.push(`No yeast in the recipe. FG assumes ${DEFAULT_ATTENUATION_PCT}% apparent attenuation.`);
+    warnings.push({ code: 'noYeast', pct: DEFAULT_ATTENUATION_PCT });
   }
   const fg = ogPoints > 0 ? estimateFg(fermentablePts, unfermentablePts, attenuationPct) : 1;
 
@@ -152,7 +154,7 @@ export function calculateRecipe(recipe: Recipe, options: CalcOptions = DEFAULT_C
   });
   for (const h of recipe.hops) {
     if (h.use === 'boil' && h.time > recipe.boilMinutes) {
-      warnings.push(`${h.name || 'A hop'} is set to boil ${h.time} min but the boil is ${recipe.boilMinutes} min. It is calculated as ${recipe.boilMinutes} min.`);
+      warnings.push({ code: 'hopBoilTooLong', name: h.name, minutes: h.time, boilMinutes: recipe.boilMinutes });
     }
   }
   const ibu = hopStats.reduce((s, h) => s + h.ibu, 0);
@@ -166,7 +168,7 @@ export function calculateRecipe(recipe: Recipe, options: CalcOptions = DEFAULT_C
     pitch = { isLager, rate, cellsBillions: cellsNeededBillions(vFerm, og, rate) };
   }
 
-  if (recipe.batchVolumeL <= 0) warnings.push('Batch volume is zero. Set a batch size to calculate the recipe.');
+  if (recipe.batchVolumeL <= 0) warnings.push({ code: 'zeroBatch' });
 
   return {
     og,

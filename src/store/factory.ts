@@ -34,12 +34,21 @@ export function defaultProfiles(): EquipmentProfile[] {
   return DEFAULT_PROFILES.map((p) => ({ ...p, updatedAt: t }));
 }
 
-export function newRecipe(profile: EquipmentProfile | undefined, author: string): Recipe {
+/** Default names for a new recipe and its first steps, in the user's language. */
+export interface NewRecipeNames {
+  untitled: string;
+  steep: string;
+  saccharification: string;
+  primary: string;
+}
+const EN_NAMES: NewRecipeNames = { untitled: 'Untitled recipe', steep: 'Steep', saccharification: 'Saccharification', primary: 'Primary' };
+
+export function newRecipe(profile: EquipmentProfile | undefined, author: string, names: NewRecipeNames = EN_NAMES): Recipe {
   const p = profile ?? defaultProfiles()[0];
   const t = now();
   return {
     id: uid('r_'),
-    name: 'Untitled recipe',
+    name: names.untitled,
     author,
     description: '',
     notes: '',
@@ -55,8 +64,8 @@ export function newRecipe(profile: EquipmentProfile | undefined, author: string)
     hops: [],
     yeasts: [],
     miscs: [],
-    mashSteps: p.method === 'extract' ? [{ id: uid('m_'), name: 'Steep', tempC: 68, minutes: 30 }] : [{ id: uid('m_'), name: 'Saccharification', tempC: 66, minutes: 60 }],
-    fermentationSteps: [{ id: uid('fs_'), name: 'Primary', tempC: 19, days: 14 }],
+    mashSteps: p.method === 'extract' ? [{ id: uid('m_'), name: names.steep, tempC: 68, minutes: 30 }] : [{ id: uid('m_'), name: names.saccharification, tempC: 66, minutes: 60 }],
+    fermentationSteps: [{ id: uid('fs_'), name: names.primary, tempC: 19, days: 14 }],
     createdAt: t,
     updatedAt: t,
   };
@@ -117,12 +126,12 @@ export function customMisc(name: string): Misc {
 }
 
 /** Give every nested item a fresh id so a copy never shares ids with its source. */
-export function duplicateRecipe(r: Recipe): Recipe {
+export function duplicateRecipe(r: Recipe, copyName: (name: string) => string = (n) => `${n} (copy)`): Recipe {
   const t = now();
   return {
     ...structuredClone(r),
     id: uid('r_'),
-    name: `${r.name} (copy)`,
+    name: copyName(r.name),
     fermentables: r.fermentables.map((x) => ({ ...x, id: uid('f_') })),
     hops: r.hops.map((x) => ({ ...x, id: uid('h_') })),
     yeasts: r.yeasts.map((x) => ({ ...x, id: uid('y_') })),

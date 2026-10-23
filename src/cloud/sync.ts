@@ -54,9 +54,10 @@ export interface CloudLoad {
   empty: boolean;
 }
 
-export async function loadCloud(client: SupabaseClient): Promise<CloudLoad> {
+/** Load the signed-in user's own data. Recipes are readable by every signed-in user, so they are filtered by owner. */
+export async function loadCloud(client: SupabaseClient, userId: string): Promise<CloudLoad> {
   const [r, e, s] = await Promise.all([
-    client.from('recipes').select('data').order('updated_at', { ascending: false }),
+    client.from('recipes').select('data').eq('user_id', userId).order('updated_at', { ascending: false }),
     client.from('equipment_profiles').select('data'),
     client.from('user_settings').select('data').maybeSingle(),
   ]);
@@ -94,4 +95,32 @@ export async function pushChanges(client: SupabaseClient, c: Changes): Promise<v
   const results = await Promise.all(ops);
   const failed = results.find((x) => x.error);
   if (failed?.error) throw new Error(failed.error.message);
+}
+
+export interface PublicRecipe {
+  ownerId: string;
+  /** Owner's display name from their sign-in profile; null for recipes saved before names were recorded. */
+  ownerName: string | null;
+  recipe: Recipe;
+}
+
+type PublicRow = { user_id: string; owner_name: string | null; data: unknown };
+const PUBLIC_COLUMNS = 'user_id, owner_name, data';
+
+function toPublic(row: PublicRow): PublicRecipe | null {
+  const p = recipeSchema.safeParse(row.data);
+  return p.success ? { ownerId: row.user_id, ownerName: row.owner_name, recipe: p.data as Recipe } : null;
+}
+
+/** The most recently updated recipes of every user. Rows that fail validation are left out. */
+export async function loadPublicRecipes(client: SupabaseClient, limit = 500): Promise<PublicRecipe[]> {
+  const { data, error } = await client.from('recipes').select(PUBLIC_COLUMNS).order('updated_at', { ascending: false }).limit(limit);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as PublicRow[]).map(toPublic).filter((x): x is PublicRecipe => x !== null);
+}
+
+export async function loadPublicRecipe(client: SupabaseClient, ownerId: string, id: string): Promise<PublicRecipe | null> {
+  const { data, error } = await client.from('recipes').select(PUBLIC_COLUMNS).eq('user_id', ownerId).eq('id', id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? toPublic(data as PublicRow) : null;
 }

@@ -37,7 +37,7 @@ describe('volumes', () => {
     expect(v.spargeWaterL).toBe(0);
     expect(v.mashWaterL).toBeCloseTo(v.totalWaterL, 9);
     // 21.5 / 0.96 + 4 = 26.396 pre-boil, + 5 L absorption = 31.396 water; with grain 34.75 L > 30 L kettle.
-    expect(v.warnings.some((w) => w.includes('kettle holds'))).toBe(true);
+    expect(v.warnings.some((w) => w.code === 'mashOverKettle')).toBe(true);
   });
 
   it('warns when kettle losses exceed a kettle-target batch', () => {
@@ -49,7 +49,7 @@ describe('volumes', () => {
   it('flags a mash too thick for the available water', () => {
     const v = calculateVolumes({ method: 'all-grain', batchVolumeL: 5, batchTarget: 'fermenter', boilMinutes: 60, equipment: { ...eq, mashThicknessLPerKg: 4 }, mashGrainKg: 10, kettleHopsG: 0, mashTempC: 66 });
     expect(v.spargeWaterL).toBe(0);
-    expect(v.warnings.some((w) => w.includes('sparge'))).toBe(true);
+    expect(v.warnings.some((w) => w.code === 'noSpargeWater')).toBe(true);
   });
 });
 
@@ -164,7 +164,7 @@ describe('calculateRecipe', () => {
     const s = calculateRecipe(baseRecipe());
     expect(s.attenuationAssumed).toBe(true);
     expect(s.fg).toBeCloseTo(1 + 55.5 * 0.25 / 1000, 5);
-    expect(s.warnings.some((w) => w.includes('No yeast'))).toBe(true);
+    expect(s.warnings.some((w) => w.code === 'noYeast')).toBe(true);
   });
 
   it('uses the highest attenuation of multiple yeasts', () => {
@@ -194,11 +194,11 @@ describe('calculateRecipe', () => {
 
   it('warns when a boil addition is longer than the boil', () => {
     const r = baseRecipe({ boilMinutes: 30, hops: [{ id: 'h', name: 'Magnum', alphaPct: 12, amountG: 20, use: 'boil', time: 60, form: 'pellet' }] });
-    expect(calculateRecipe(r).warnings.some((w) => w.includes('Magnum'))).toBe(true);
+    expect(calculateRecipe(r).warnings.some((w) => w.code === 'hopBoilTooLong' && w.name === 'Magnum')).toBe(true);
   });
 
   it('warns about impossible efficiency', () => {
     const r = baseRecipe({ efficiencyPct: 90, equipment: { ...LOSSLESS, kettleLossL: 10 } });
-    expect(calculateRecipe(r).warnings.some((w) => w.includes('not possible'))).toBe(true);
+    expect(calculateRecipe(r).warnings.some((w) => w.code === 'impossibleEfficiency')).toBe(true);
   });
 });

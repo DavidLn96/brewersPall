@@ -11,5 +11,5 @@ trap '"$BIN/pg_ctl" -D "$DIR" stop -m fast >/dev/null; rm -rf "$DIR"' EXIT
 P="psql -h $DIR -p $PORT -U postgres -v ON_ERROR_STOP=1 -q"
 $P -c 'create database t' >/dev/null
 $P -d t -f tests/stub_supabase.sql
-$P -d t -f migrations/*_init.sql
+for f in migrations/*.sql; do $P -d t -f "$f"; done
 $P -d t -f tests/rls_test.sql

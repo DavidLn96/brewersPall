@@ -57,12 +57,25 @@ export interface VolumeResult {
   /** Total mash volume including grain displacement (L). */
   mashVolumeL: number;
   strikeTempC: number | null;
-  warnings: string[];
+  warnings: CalcWarning[];
+}
+
+/** A calculation warning as a code plus values; the UI turns it into text in the user's language. */
+export interface CalcWarning {
+  code: 'noWortToFermenter' | 'noSpargeWater' | 'preBoilOverKettle' | 'mashOverKettle' | 'mashOverTun' | 'impossibleEfficiency' | 'noYeast' | 'hopBoilTooLong' | 'zeroBatch';
+  /** Volume in liters. */
+  volumeL?: number;
+  /** Vessel capacity in liters. */
+  capacityL?: number;
+  pct?: number;
+  name?: string;
+  minutes?: number;
+  boilMinutes?: number;
 }
 
 export function calculateVolumes(input: VolumeInputs): VolumeResult {
   const eq = input.equipment;
-  const warnings: string[] = [];
+  const warnings: CalcWarning[] = [];
   const shrink = clampFraction(eq.coolingShrinkagePct / 100);
   const hopAbsorptionL = (Math.max(0, input.kettleHopsG) * Math.max(0, eq.hopAbsorptionMlPerG)) / 1000;
   const kettleLoss = Math.max(0, eq.kettleLossL);
@@ -80,7 +93,7 @@ export function calculateVolumes(input: VolumeInputs): VolumeResult {
     postBoilCoolL = batch * (1 - shrink);
     intoFermenterL = Math.max(0, postBoilCoolL - kettleLoss - hopAbsorptionL);
     if (postBoilCoolL - kettleLoss - hopAbsorptionL <= 0 && batch > 0) {
-      warnings.push('Kettle losses exceed the post-boil volume, so no wort reaches the fermenter.');
+      warnings.push({ code: 'noWortToFermenter' });
     }
   }
 
@@ -111,7 +124,7 @@ export function calculateVolumes(input: VolumeInputs): VolumeResult {
       mashWaterL = Math.min(strike, totalWaterL);
       spargeWaterL = totalWaterL - mashWaterL;
       if (grainKg > 0 && strike > totalWaterL) {
-        warnings.push('Mash thickness needs more water than the whole batch uses, so no sparge water remains. Lower the mash thickness or consider a no-sparge mash.');
+        warnings.push({ code: 'noSpargeWater' });
       }
     }
   }
@@ -125,14 +138,14 @@ export function calculateVolumes(input: VolumeInputs): VolumeResult {
       : null;
 
   if (eq.kettleVolumeL > 0 && preBoilL > eq.kettleVolumeL) {
-    warnings.push(`Pre-boil volume (${preBoilL.toFixed(1)} L) is more than the kettle holds (${eq.kettleVolumeL.toFixed(1)} L).`);
+    warnings.push({ code: 'preBoilOverKettle', volumeL: preBoilL, capacityL: eq.kettleVolumeL });
   }
   if (input.method === 'biab') {
     if (eq.kettleVolumeL > 0 && mashVolumeL > eq.kettleVolumeL) {
-      warnings.push(`Full-volume mash with grain (${mashVolumeL.toFixed(1)} L) is more than the kettle holds (${eq.kettleVolumeL.toFixed(1)} L).`);
+      warnings.push({ code: 'mashOverKettle', volumeL: mashVolumeL, capacityL: eq.kettleVolumeL });
     }
   } else if (input.method !== 'extract' && eq.mashTunVolumeL > 0 && mashVolumeL > eq.mashTunVolumeL) {
-    warnings.push(`Mash volume with grain (${mashVolumeL.toFixed(1)} L) is more than the mash tun holds (${eq.mashTunVolumeL.toFixed(1)} L).`);
+    warnings.push({ code: 'mashOverTun', volumeL: mashVolumeL, capacityL: eq.mashTunVolumeL });
   }
 
   return {

@@ -4,6 +4,8 @@ export type Route =
   | { name: 'recipes' }
   | { name: 'recipe'; id: string }
   | { name: 'edit'; id: string }
+  | { name: 'public' }
+  | { name: 'publicRecipe'; owner: string; id: string }
   | { name: 'equipment' }
   | { name: 'settings' }
   | { name: 'methods' };
@@ -12,6 +14,8 @@ export function parseHash(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   if (parts[0] === 'recipes' && parts[1] && parts[2] === 'edit') return { name: 'edit', id: decodeURIComponent(parts[1]) };
   if (parts[0] === 'recipes' && parts[1]) return { name: 'recipe', id: decodeURIComponent(parts[1]) };
+  if (parts[0] === 'public' && parts[1] && parts[2]) return { name: 'publicRecipe', owner: decodeURIComponent(parts[1]), id: decodeURIComponent(parts[2]) };
+  if (parts[0] === 'public') return { name: 'public' };
   if (parts[0] === 'equipment') return { name: 'equipment' };
   if (parts[0] === 'settings') return { name: 'settings' };
   if (parts[0] === 'methods') return { name: 'methods' };
@@ -26,6 +30,8 @@ export function href(route: Route): string {
       return `#/recipes/${encodeURIComponent(route.id)}`;
     case 'edit':
       return `#/recipes/${encodeURIComponent(route.id)}/edit`;
+    case 'publicRecipe':
+      return `#/public/${encodeURIComponent(route.owner)}/${encodeURIComponent(route.id)}`;
     default:
       return `#/${route.name}`;
   }

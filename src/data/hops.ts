@@ -48,10 +48,3 @@ export const HOPS: HopCatalogItem[] = [
   h('motueka', 'Motueka', 'NZ', 7, 'aroma', 'Lime, tropical'),
 ];
 
-export const HOP_USE_LABEL = {
-  boil: 'Boil',
-  'first-wort': 'First wort',
-  mash: 'Mash',
-  whirlpool: 'Whirlpool',
-  'dry-hop': 'Dry hop',
-} as const;

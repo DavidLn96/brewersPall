@@ -1,5 +1,6 @@
 import { useId, useMemo, useRef, useState } from 'react';
 import { Plus, Search } from 'lucide-react';
+import { useI18n } from '../i18n';
 
 export interface PickerOption<T> {
   key: string;
@@ -24,6 +25,7 @@ interface PickerProps<T> {
  * Arrow keys move, Enter picks, Escape closes. The last option adds a custom ingredient.
  */
 export function Picker<T>({ options, placeholder, onPick, onCustom, label }: PickerProps<T>) {
+  const { t } = useI18n();
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -137,7 +139,7 @@ export function Picker<T>({ options, placeholder, onPick, onCustom, label }: Pic
             >
               <span>
                 <Plus size={13} aria-hidden="true" style={{ verticalAlign: -2, marginRight: 4 }} />
-                Add custom “{customName}”
+                {t.picker.addCustom(customName)}
               </span>
             </li>
           )}

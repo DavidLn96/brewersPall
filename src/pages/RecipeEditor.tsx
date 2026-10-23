@@ -1,13 +1,14 @@
 import { useMemo } from 'react';
+import { useI18n, type Dict } from '../i18n';
 import { Check, Eye, FileDown, Loader2, Plus, TriangleAlert } from 'lucide-react';
-import type { Fermentable, FermentableStage, Hop, HopForm, HopUse, MashStep, FermentationStep, Misc, MiscType, MiscUnit, MiscUse, Recipe, Yeast, BrewMethod, BatchTarget } from '../domain/types';
+import type { Fermentable, Hop, HopForm, MashStep, FermentationStep, Misc, MiscType, MiscUnit, MiscUse, Recipe, Yeast, BrewMethod, BatchTarget } from '../domain/types';
 import { calculateRecipe } from '../domain/recipe';
 import { srmToHex } from '../domain/color';
 import { findStyle, STYLES } from '../data/styles';
-import { FERMENTABLES, FERMENTABLE_CATEGORY_LABEL, type FermentableCatalogItem } from '../data/fermentables';
+import { FERMENTABLES, type FermentableCatalogItem } from '../data/fermentables';
 import { HOPS, type HopCatalogItem } from '../data/hops';
 import { YEASTS, type YeastCatalogItem } from '../data/yeasts';
-import { MISCS, MISC_TYPE_LABEL, MISC_UNITS, MISC_USE_LABEL, type MiscCatalogItem } from '../data/miscs';
+import { MISCS, MISC_UNITS, type MiscCatalogItem } from '../data/miscs';
 import { useStore } from '../store/AppStore';
 import { customFermentable, customHop, customMisc, customYeast, equipmentFromProfile, fermentableFromCatalog, hopFromCatalog, miscFromCatalog, uid, yeastFromCatalog } from '../store/factory';
 import { linkProps } from '../router';
@@ -15,32 +16,24 @@ import { NumberField, NumberInput, Select, SelectField, TextField } from '../ui/
 import { Picker, type PickerOption } from '../ui/Picker';
 import { CellLabel, moveItem, Notice, RowActions, Section } from '../ui/common';
 import { MobileStats, StatsPanel } from '../ui/StatsPanel';
-import { fmt, HOP_USE_LABEL, massL, massS, METHOD_LABEL, MISC_TIME_UNIT, ppgFormat } from '../ui/format';
+import { fmt, massL, massS, miscTimeUnit, ppgFormat } from '../ui/format';
 import { downloadPdf } from '../ui/pdfAction';
 import type { UnitSystem } from '../domain/units';
 
-const fermentableOptions: PickerOption<FermentableCatalogItem>[] = FERMENTABLES.map((f) => ({
-  key: f.id,
-  label: f.name,
-  meta: `${(1 + f.ppg / 1000).toFixed(3)} · ${f.lovibond}°L`,
-  group: FERMENTABLE_CATEGORY_LABEL[f.category],
-  item: f,
-}));
+const fermentableOptions = (t: Dict): PickerOption<FermentableCatalogItem>[] =>
+  FERMENTABLES.map((f) => ({
+    key: f.id,
+    label: f.name,
+    meta: `${(1 + f.ppg / 1000).toFixed(3)} · ${f.lovibond}°L`,
+    group: t.fermCategory[f.category],
+    item: f,
+  }));
 const hopOptions: PickerOption<HopCatalogItem>[] = HOPS.map((h) => ({ key: h.id, label: h.name, meta: `${h.alpha}% AA · ${h.origin}`, keywords: h.notes, item: h }));
-const yeastOptions: PickerOption<YeastCatalogItem>[] = YEASTS.map((y) => ({ key: y.id, label: `${y.lab} ${y.product} ${y.name}`, meta: `${y.attenuation}% · ${y.form}`, group: y.lab, keywords: y.notes, item: y }));
-const miscOptions: PickerOption<MiscCatalogItem>[] = MISCS.map((m) => ({ key: m.id, label: m.name, meta: MISC_TYPE_LABEL[m.type], group: MISC_TYPE_LABEL[m.type], item: m }));
+const yeastOptions = (t: Dict): PickerOption<YeastCatalogItem>[] => YEASTS.map((y) => ({ key: y.id, label: `${y.lab} ${y.product} ${y.name}`, meta: `${y.attenuation}% · ${t.yeastForm[y.form]}`, group: y.lab, keywords: y.notes, item: y }));
+const miscOptions = (t: Dict): PickerOption<MiscCatalogItem>[] => MISCS.map((m) => ({ key: m.id, label: m.name, meta: t.miscType[m.type], group: t.miscType[m.type], item: m }));
 
-const STAGES: { value: FermentableStage; label: string }[] = [
-  { value: 'mash', label: 'Mash' },
-  { value: 'boil', label: 'Boil' },
-  { value: 'fermenter', label: 'Fermenter' },
-];
-const HOP_USES = (Object.keys(HOP_USE_LABEL) as HopUse[]).map((u) => ({ value: u, label: HOP_USE_LABEL[u] }));
-const HOP_FORMS: { value: HopForm; label: string }[] = [
-  { value: 'pellet', label: 'Pellet' },
-  { value: 'leaf', label: 'Leaf' },
-  { value: 'cryo', label: 'Cryo' },
-];
+/** Turn a label map into select options, keeping the map's key order. */
+const optionsOf = <K extends string>(labels: Record<K, string>) => (Object.keys(labels) as K[]).map((value) => ({ value, label: labels[value] }));
 
 export function RecipeEditor({ id }: { id: string }) {
   const { data, upsertRecipe, saveState, persistent, mode } = useStore();
@@ -48,13 +41,14 @@ export function RecipeEditor({ id }: { id: string }) {
   const settings = data.settings;
   const s = settings.unitSystem;
   const stats = useMemo(() => (recipe ? calculateRecipe(recipe, settings) : null), [recipe, settings]);
+  const { t, lang } = useI18n();
 
   if (!recipe || !stats) {
     return (
       <div className="page">
-        <h1>Recipe not found</h1>
+        <h1>{t.common.recipeNotFound}</h1>
         <p className="muted" style={{ marginTop: 8 }}>
-          It may have been deleted. <a {...linkProps({ name: 'recipes' })}>Back to My Recipes</a>
+          {t.common.maybeDeleted} <a {...linkProps({ name: 'recipes' })}>{t.common.backToRecipes}</a>
         </p>
       </div>
     );
@@ -79,21 +73,21 @@ export function RecipeEditor({ id }: { id: string }) {
       <div className="page-head" style={{ alignItems: 'flex-start' }}>
         <div style={{ flex: '1 1 320px', minWidth: 0 }}>
           <label htmlFor="recipe-name" className="sr-only">
-            Recipe name
+            {t.editor.recipeName}
           </label>
-          <input id="recipe-name" className="title-input" value={recipe.name} onChange={(e) => update({ name: e.target.value })} placeholder="Recipe name" />
+          <input id="recipe-name" className="title-input" value={recipe.name} onChange={(e) => update({ name: e.target.value })} placeholder={t.editor.recipeName} />
           <div className="actions" style={{ marginTop: 4 }}>
-            <span className="tag">{METHOD_LABEL[recipe.method]}</span>
+            <span className="tag">{t.method[recipe.method]}</span>
             {style && <span className="tag accent">{style.code} {style.name}</span>}
             <SaveState state={saveState} persistent={persistent} cloud={mode === 'cloud'} />
           </div>
         </div>
         <div className="actions">
           <a className="btn" {...linkProps({ name: 'recipe', id: recipe.id })}>
-            <Eye size={15} aria-hidden="true" /> View sheet
+            <Eye size={15} aria-hidden="true" /> {t.editor.viewSheet}
           </a>
-          <button type="button" className="btn btn-primary" onClick={() => void downloadPdf(recipe, stats, settings)}>
-            <FileDown size={15} aria-hidden="true" /> Download PDF
+          <button type="button" className="btn btn-primary" onClick={() => void downloadPdf(recipe, stats, settings, lang)}>
+            <FileDown size={15} aria-hidden="true" /> {t.common.downloadPdf}
           </button>
         </div>
       </div>
@@ -102,42 +96,39 @@ export function RecipeEditor({ id }: { id: string }) {
 
       <div className="editor" style={{ marginTop: 12 }}>
         <div className="editor-main">
-          <Section title="Batch" id="batch">
+          <Section title={t.editor.batch} id="batch">
             <div className="section-body grid grid-4">
               <SelectField<string>
-                label="Equipment profile"
+                label={t.editor.equipmentProfile}
                 className="span-2"
                 value={recipe.equipmentProfileId ?? ''}
                 onChange={applyProfile}
-                options={[...(recipe.equipmentProfileId && !data.equipment.some((e) => e.id === recipe.equipmentProfileId) ? [{ value: recipe.equipmentProfileId, label: `${recipe.equipment.name} (deleted)` }] : []), ...(recipe.equipmentProfileId ? [] : [{ value: '', label: 'Custom equipment' }]), ...data.equipment.map((e) => ({ value: e.id, label: e.name }))]}
-                hint="Choosing a profile copies its volumes and losses into this recipe."
+                options={[...(recipe.equipmentProfileId && !data.equipment.some((e) => e.id === recipe.equipmentProfileId) ? [{ value: recipe.equipmentProfileId, label: t.editor.deletedProfile(recipe.equipment.name) }] : []), ...(recipe.equipmentProfileId ? [] : [{ value: '', label: t.editor.customEquipment }]), ...data.equipment.map((e) => ({ value: e.id, label: e.name }))]}
+                hint={t.editor.profileHint}
               />
               <SelectField<BrewMethod>
-                label="Method"
+                label={t.editor.method}
                 value={recipe.method}
                 onChange={(m) => update({ method: m })}
-                options={(Object.keys(METHOD_LABEL) as BrewMethod[]).map((m) => ({ value: m, label: METHOD_LABEL[m] }))}
+                options={optionsOf<BrewMethod>(t.method)}
               />
-              <SelectField<string> label="Style" value={recipe.styleId ?? ''} onChange={(v) => update({ styleId: v || null })} options={[{ value: '', label: 'No style' }, ...STYLES.map((st) => ({ value: st.id, label: `${st.code} ${st.name}` }))]} />
+              <SelectField<string> label={t.editor.style} value={recipe.styleId ?? ''} onChange={(v) => update({ styleId: v || null })} options={[{ value: '', label: t.editor.noStyle }, ...STYLES.map((st) => ({ value: st.id, label: `${st.code} ${st.name}` }))]} />
               <SelectField<BatchTarget>
-                label="Batch size measured"
+                label={t.editor.batchMeasured}
                 value={recipe.batchTarget}
-                onChange={(t) => update({ batchTarget: t })}
-                options={[
-                  { value: 'fermenter', label: 'Into fermenter' },
-                  { value: 'kettle', label: 'Post-boil kettle' },
-                ]}
+                onChange={(v) => update({ batchTarget: v })}
+                options={optionsOf<BatchTarget>(t.batchTarget)}
               />
-              <NumberField label="Batch size" kind="volume" system={s} value={recipe.batchVolumeL} onChange={(v) => update({ batchVolumeL: v })} max={s === 'us' ? 1000 : 4000} />
-              <NumberField label="Boil time" unit="min" decimals={0} value={recipe.boilMinutes} onChange={(v) => update({ boilMinutes: Math.round(v) })} max={300} />
+              <NumberField label={t.editor.batchSize} kind="volume" system={s} value={recipe.batchVolumeL} onChange={(v) => update({ batchVolumeL: v })} max={s === 'us' ? 1000 : 4000} />
+              <NumberField label={t.editor.boilTime} unit={t.common.min} decimals={0} value={recipe.boilMinutes} onChange={(v) => update({ boilMinutes: Math.round(v) })} max={300} />
               <NumberField
-                label={recipe.batchTarget === 'fermenter' ? 'Brewhouse efficiency' : 'Kettle efficiency'}
+                label={recipe.batchTarget === 'fermenter' ? t.editor.brewhouseEff : t.editor.kettleEff}
                 unit="%"
                 decimals={1}
                 value={recipe.efficiencyPct}
                 onChange={(v) => update({ efficiencyPct: v })}
                 max={100}
-                hint={isExtract ? 'Applies to steeping grains only.' : recipe.batchTarget === 'fermenter' ? 'Extract that reaches the fermenter.' : 'Extract in the kettle after the boil.'}
+                hint={isExtract ? t.editor.effExtract : recipe.batchTarget === 'fermenter' ? t.editor.effFermenter : t.editor.effKettle}
               />
             </div>
           </Section>
@@ -147,36 +138,36 @@ export function RecipeEditor({ id }: { id: string }) {
           <YeastSection recipe={recipe} system={s} setList={(l) => setList('yeasts', l)} patch={(i, p) => patchItem('yeasts', i, p)} />
           <MiscSection recipe={recipe} setList={(l) => setList('miscs', l)} patch={(i, p) => patchItem('miscs', i, p)} />
           <StepsSection<MashStep>
-            title={isExtract ? 'Steeping' : 'Mash schedule'}
+            title={isExtract ? t.editor.steeping : t.editor.mashSchedule}
             items={recipe.mashSteps}
             system={s}
-            timeUnit="min"
+            timeUnit={t.common.min}
             timeKey="minutes"
             onChange={(l) => setList('mashSteps', l)}
-            newItem={() => ({ id: uid('m_'), name: recipe.mashSteps.length === 0 ? 'Saccharification' : 'Mash out', tempC: recipe.mashSteps.length === 0 ? 66 : 76, minutes: recipe.mashSteps.length === 0 ? 60 : 10 })}
-            hint={isExtract ? undefined : 'The first step sets the strike water temperature.'}
+            newItem={() => ({ id: uid('m_'), name: recipe.mashSteps.length === 0 ? (isExtract ? t.defaults.steep : t.defaults.saccharification) : t.defaults.mashOut, tempC: recipe.mashSteps.length === 0 ? 66 : 76, minutes: recipe.mashSteps.length === 0 ? 60 : 10 })}
+            hint={isExtract ? undefined : t.editor.firstStepHint}
           />
           <StepsSection<FermentationStep>
-            title="Fermentation schedule"
+            title={t.editor.fermSchedule}
             items={recipe.fermentationSteps}
             system={s}
-            timeUnit="days"
+            timeUnit={t.common.days}
             timeKey="days"
             onChange={(l) => setList('fermentationSteps', l)}
-            newItem={() => ({ id: uid('fs_'), name: recipe.fermentationSteps.length === 0 ? 'Primary' : 'Conditioning', tempC: recipe.fermentationSteps.length === 0 ? 19 : 4, days: recipe.fermentationSteps.length === 0 ? 14 : 7 })}
+            newItem={() => ({ id: uid('fs_'), name: recipe.fermentationSteps.length === 0 ? t.defaults.primary : t.defaults.conditioning, tempC: recipe.fermentationSteps.length === 0 ? 19 : 4, days: recipe.fermentationSteps.length === 0 ? 14 : 7 })}
           />
           <EquipmentSection recipe={recipe} system={s} update={update} />
 
-          <Section title="Notes" id="notes">
+          <Section title={t.editor.notes} id="notes">
             <div className="section-body grid grid-2">
-              <TextField label="Brewer" value={recipe.author} onChange={(v) => update({ author: v })} placeholder={settings.brewerName || 'Your name'} />
-              <TextField label="Short description" value={recipe.description} onChange={(v) => update({ description: v })} placeholder="What this beer is about" />
-              <TextField className="span-2" label="Brewing notes" multiline value={recipe.notes} onChange={(v) => update({ notes: v })} placeholder="Process notes, water adjustments, tasting goals…" />
+              <TextField label={t.editor.brewer} value={recipe.author} onChange={(v) => update({ author: v })} placeholder={settings.brewerName || t.editor.yourName} />
+              <TextField label={t.editor.description} value={recipe.description} onChange={(v) => update({ description: v })} placeholder={t.editor.descriptionPh} />
+              <TextField className="span-2" label={t.editor.brewingNotes} multiline value={recipe.notes} onChange={(v) => update({ notes: v })} placeholder={t.editor.brewingNotesPh} />
             </div>
           </Section>
         </div>
 
-        <aside className="editor-side" aria-label="Recipe statistics">
+        <aside className="editor-side" aria-label={t.editor.statsAside}>
           <StatsPanel stats={stats} recipe={recipe} style={style} settings={settings} />
         </aside>
       </div>
@@ -185,22 +176,23 @@ export function RecipeEditor({ id }: { id: string }) {
 }
 
 function SaveState({ state, persistent, cloud }: { state: 'saved' | 'saving' | 'error'; persistent: boolean; cloud: boolean }) {
+  const { t } = useI18n();
   if (!persistent)
     return (
       <span className="save-state error">
-        <TriangleAlert size={13} aria-hidden="true" /> Not saved: this browser blocks local storage
+        <TriangleAlert size={13} aria-hidden="true" /> {t.editor.notSavedBlocked}
       </span>
     );
   if (state === 'error')
     return (
       <span className="save-state error" role="alert">
-        <TriangleAlert size={13} aria-hidden="true" /> {cloud ? 'Not saved yet. Retrying when the connection is back.' : 'Could not save. Storage may be full.'}
+        <TriangleAlert size={13} aria-hidden="true" /> {cloud ? t.editor.retrying : t.editor.storageFull}
       </span>
     );
   return (
     <span className="save-state" aria-live="polite">
       {state === 'saving' ? <Loader2 size={13} aria-hidden="true" /> : <Check size={13} aria-hidden="true" />}
-      {state === 'saving' ? 'Saving…' : cloud ? 'Saved to your account' : 'Saved in this browser'}
+      {state === 'saving' ? t.editor.saving : cloud ? t.app.savedAccount : t.app.savedBrowser}
     </span>
   );
 }
@@ -208,24 +200,26 @@ function SaveState({ state, persistent, cloud }: { state: 'saved' | 'saving' | '
 type StatsT = ReturnType<typeof calculateRecipe>;
 
 function FermentablesSection({ recipe, stats, system, setList, patch }: { recipe: Recipe; stats: StatsT; system: UnitSystem; setList: (l: Fermentable[]) => void; patch: (id: string, p: Partial<Fermentable>) => void }) {
+  const { t } = useI18n();
+  const options = useMemo(() => fermentableOptions(t), [t]);
   const list = recipe.fermentables;
   const hasBase = list.some((f) => f.category === 'base' || f.category === 'extract');
   const defaultKg = (c: FermentableCatalogItem) =>
     c.category === 'base' ? (hasBase ? 0.5 : 4) : c.category === 'extract' ? (hasBase ? 0.5 : 2.5) : c.category === 'sugar' ? 0.25 : c.category === 'roasted' ? 0.15 : 0.3;
   return (
     <Section
-      title="Fermentables"
+      title={t.editor.fermentables}
       id="fermentables"
       count={list.length}
-      actions={<Picker label="Add fermentable" placeholder="Add malt, extract or sugar…" options={fermentableOptions} onPick={(c) => setList([...list, fermentableFromCatalog(c, defaultKg(c))])} onCustom={(n) => setList([...list, customFermentable(n)])} />}
+      actions={<Picker label={t.editor.addFermentable} placeholder={t.editor.addFermentablePh} options={options} onPick={(c) => setList([...list, fermentableFromCatalog(c, defaultKg(c))])} onCustom={(n) => setList([...list, customFermentable(n)])} />}
       footer={
         list.length > 0 && (
           <>
             <span>
-              Total <strong>{massL(stats.totalFermentableKg, system)}</strong>
+              {t.common.total} <strong>{massL(stats.totalFermentableKg, system)}</strong>
             </span>
             <span>
-              Grain <strong>{massL(stats.totalGrainKg, system)}</strong>
+              {t.editor.grain} <strong>{massL(stats.totalGrainKg, system)}</strong>
             </span>
             <span>
               OG <strong>{stats.og.toFixed(3)}</strong>
@@ -236,21 +230,21 @@ function FermentablesSection({ recipe, stats, system, setList, patch }: { recipe
     >
       {list.length === 0 ? (
         <div className="empty">
-          <strong>No fermentables yet.</strong>
-          Search above to add a base malt, extract or sugar. Gravity and color update as you go.
+          <strong>{t.editor.noFermTitle}</strong>
+          {t.editor.noFermBody}
         </div>
       ) : (
         <div className="table-scroll">
           <table className="itable stack">
             <thead>
               <tr>
-                <th>Fermentable</th>
-                <th className="r">Amount</th>
-                <th className="r">Potential</th>
-                <th className="r">Color</th>
-                <th>Added</th>
+                <th>{t.editor.fermentable}</th>
+                <th className="r">{t.editor.amount}</th>
+                <th className="r">{t.editor.potential}</th>
+                <th className="r">{t.editor.color}</th>
+                <th>{t.editor.added}</th>
                 <th>
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">{t.common.actions}</span>
                 </th>
               </tr>
             </thead>
@@ -260,15 +254,15 @@ function FermentablesSection({ recipe, stats, system, setList, patch }: { recipe
                 return (
                   <tr key={f.id}>
                     <td className="name-cell">
-                      <CellLabel>Fermentable</CellLabel>
-                      <input className="input name-input" aria-label="Fermentable name" value={f.name} onChange={(e) => patch(f.id, { name: e.target.value })} />
+                      <CellLabel>{t.editor.fermentable}</CellLabel>
+                      <input className="input name-input" aria-label={t.editor.fermentableName} value={f.name} onChange={(e) => patch(f.id, { name: e.target.value })} />
                       <div className="meta">
                         <span className="swatch-dot" style={{ background: srmToHex(f.colorLovibond) }} />
-                        {FERMENTABLE_CATEGORY_LABEL[f.category]}
-                        {!f.fermentable && ' · unfermentable'}
+                        {t.fermCategory[f.category]}
+                        {!f.fermentable && ` · ${t.editor.unfermentable}`}
                         <span className="mono" title={`${fmt(st?.mcu ?? 0, 1)} MCU`}>
                           {' · '}
-                          {fmt(st?.weightPct ?? 0, 1)}% · {fmt(st?.ogPoints ?? 0, 1)} pts
+                          {fmt(st?.weightPct ?? 0, 1)}% · {fmt(st?.ogPoints ?? 0, 1)} {t.stats.pts}
                         </span>
                       </div>
                       <div className="bar" aria-hidden="true">
@@ -276,20 +270,20 @@ function FermentablesSection({ recipe, stats, system, setList, patch }: { recipe
                       </div>
                     </td>
                     <td style={{ width: 112, minWidth: 112 }}>
-                      <CellLabel>Amount</CellLabel>
-                      <NumberInput ariaLabel={`${f.name} amount`} kind="massLarge" system={system} value={f.amountKg} onChange={(v) => patch(f.id, { amountKg: v })} max={1000} />
+                      <CellLabel>{t.editor.amount}</CellLabel>
+                      <NumberInput ariaLabel={t.editor.ariaAmount(f.name)} kind="massLarge" system={system} value={f.amountKg} onChange={(v) => patch(f.id, { amountKg: v })} max={1000} />
                     </td>
                     <td style={{ width: 96, minWidth: 96 }}>
-                      <CellLabel>Potential (SG)</CellLabel>
-                      <NumberInput ariaLabel={`${f.name} potential gravity`} format={ppgFormat} decimals={3} min={1} max={1.05} step={0.001} value={f.potentialPpg} onChange={(v) => patch(f.id, { potentialPpg: v })} />
+                      <CellLabel>{t.editor.potentialSg}</CellLabel>
+                      <NumberInput ariaLabel={t.editor.ariaPotential(f.name)} format={ppgFormat} decimals={3} min={1} max={1.05} step={0.001} value={f.potentialPpg} onChange={(v) => patch(f.id, { potentialPpg: v })} />
                     </td>
                     <td style={{ width: 92, minWidth: 92 }}>
-                      <CellLabel>Color</CellLabel>
-                      <NumberInput ariaLabel={`${f.name} color in Lovibond`} unit="°L" decimals={1} max={1000} value={f.colorLovibond} onChange={(v) => patch(f.id, { colorLovibond: v })} />
+                      <CellLabel>{t.editor.color}</CellLabel>
+                      <NumberInput ariaLabel={t.editor.ariaColor(f.name)} unit="°L" decimals={1} max={1000} value={f.colorLovibond} onChange={(v) => patch(f.id, { colorLovibond: v })} />
                     </td>
                     <td style={{ width: 112, minWidth: 112 }}>
-                      <CellLabel>Added</CellLabel>
-                      <Select ariaLabel={`${f.name} addition stage`} value={f.stage} options={STAGES} onChange={(v) => patch(f.id, { stage: v })} />
+                      <CellLabel>{t.editor.added}</CellLabel>
+                      <Select ariaLabel={t.editor.ariaStage(f.name)} value={f.stage} options={optionsOf(recipe.method === 'extract' ? { ...t.stage, mash: t.steep } : t.stage)} onChange={(v) => patch(f.id, { stage: v })} />
                     </td>
                     <td className="actions-cell" style={{ width: 112, minWidth: 112 }}>
                       <RowActions name={f.name} index={i} length={list.length} onMove={(a, b) => setList(moveItem(list, a, b))} onDuplicate={() => setList([...list.slice(0, i + 1), { ...f, id: uid('f_') }, ...list.slice(i + 1)])} onRemove={() => setList(list.filter((x) => x.id !== f.id))} />
@@ -306,25 +300,26 @@ function FermentablesSection({ recipe, stats, system, setList, patch }: { recipe
 }
 
 function HopsSection({ recipe, stats, system, setList, patch }: { recipe: Recipe; stats: StatsT; system: UnitSystem; setList: (l: Hop[]) => void; patch: (id: string, p: Partial<Hop>) => void }) {
+  const { t } = useI18n();
   const list = recipe.hops;
   const lastTime = list.length ? list[list.length - 1].time : recipe.boilMinutes;
   return (
     <Section
-      title="Hops"
+      title={t.editor.hops}
       id="hops"
       count={list.length}
-      actions={<Picker label="Add hop" placeholder="Add hop variety…" options={hopOptions} onPick={(c) => setList([...list, hopFromCatalog(c, list.length === 0 ? 20 : 30, list.length === 0 ? recipe.boilMinutes : Math.max(0, Math.min(lastTime, 15)))])} onCustom={(n) => setList([...list, customHop(n)])} />}
+      actions={<Picker label={t.editor.addHop} placeholder={t.editor.addHopPh} options={hopOptions} onPick={(c) => setList([...list, hopFromCatalog(c, list.length === 0 ? 20 : 30, list.length === 0 ? recipe.boilMinutes : Math.max(0, Math.min(lastTime, 15)))])} onCustom={(n) => setList([...list, customHop(n)])} />}
       footer={
         list.length > 0 && (
           <>
             <span>
-              Total <strong>{massS(stats.totalHopsG, system)}</strong>
+              {t.common.total} <strong>{massS(stats.totalHopsG, system)}</strong>
             </span>
             <span>
               IBU <strong>{fmt(stats.ibu, 1)}</strong>
             </span>
             <span>
-              Boil gravity <strong>{stats.boilGravity.toFixed(3)}</strong>
+              {t.editor.boilGravity} <strong>{stats.boilGravity.toFixed(3)}</strong>
             </span>
           </>
         )
@@ -332,22 +327,22 @@ function HopsSection({ recipe, stats, system, setList, patch }: { recipe: Recipe
     >
       {list.length === 0 ? (
         <div className="empty">
-          <strong>No hops yet.</strong>
-          Add a bittering hop at the start of the boil, then flavor, whirlpool and dry-hop additions.
+          <strong>{t.editor.noHopsTitle}</strong>
+          {t.editor.noHopsBody}
         </div>
       ) : (
         <div className="table-scroll">
           <table className="itable stack">
             <thead>
               <tr>
-                <th>Hop</th>
-                <th className="r">Alpha</th>
-                <th className="r">Amount</th>
-                <th>Use</th>
-                <th>Time</th>
+                <th>{t.editor.hop}</th>
+                <th className="r">{t.editor.alpha}</th>
+                <th className="r">{t.editor.amount}</th>
+                <th>{t.editor.use}</th>
+                <th>{t.editor.time}</th>
                 <th className="r">IBU</th>
                 <th>
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">{t.common.actions}</span>
                 </th>
               </tr>
             </thead>
@@ -357,11 +352,11 @@ function HopsSection({ recipe, stats, system, setList, patch }: { recipe: Recipe
                 return (
                   <tr key={h.id}>
                     <td className="name-cell">
-                      <CellLabel>Hop</CellLabel>
-                      <input className="input name-input" aria-label="Hop name" value={h.name} onChange={(e) => patch(h.id, { name: e.target.value })} />
+                      <CellLabel>{t.editor.hop}</CellLabel>
+                      <input className="input name-input" aria-label={t.editor.hopName} value={h.name} onChange={(e) => patch(h.id, { name: e.target.value })} />
                       <div className="meta">
-                        <select className="select meta-select" aria-label={`${h.name} form`} value={h.form} onChange={(e) => patch(h.id, { form: e.target.value as HopForm })}>
-                          {HOP_FORMS.map((o) => (
+                        <select className="select meta-select" aria-label={t.editor.ariaForm(h.name)} value={h.form} onChange={(e) => patch(h.id, { form: e.target.value as HopForm })}>
+                          {optionsOf<HopForm>(t.hopForm).map((o) => (
                             <option key={o.value} value={o.value}>
                               {o.label}
                             </option>
@@ -370,34 +365,34 @@ function HopsSection({ recipe, stats, system, setList, patch }: { recipe: Recipe
                       </div>
                     </td>
                     <td style={{ width: 76, minWidth: 76 }}>
-                      <CellLabel>Alpha acid</CellLabel>
-                      <NumberInput ariaLabel={`${h.name} alpha acid`} unit="%" decimals={1} max={30} value={h.alphaPct} onChange={(v) => patch(h.id, { alphaPct: v })} />
+                      <CellLabel>{t.editor.alphaAcid}</CellLabel>
+                      <NumberInput ariaLabel={t.editor.ariaAlpha(h.name)} unit="%" decimals={1} max={30} value={h.alphaPct} onChange={(v) => patch(h.id, { alphaPct: v })} />
                     </td>
                     <td style={{ width: 92, minWidth: 92 }}>
-                      <CellLabel>Amount</CellLabel>
-                      <NumberInput ariaLabel={`${h.name} amount`} kind="massSmall" system={system} value={h.amountG} onChange={(v) => patch(h.id, { amountG: v })} max={100000} />
+                      <CellLabel>{t.editor.amount}</CellLabel>
+                      <NumberInput ariaLabel={t.editor.ariaAmount(h.name)} kind="massSmall" system={system} value={h.amountG} onChange={(v) => patch(h.id, { amountG: v })} max={100000} />
                     </td>
                     <td style={{ width: 108, minWidth: 108 }}>
-                      <CellLabel>Use</CellLabel>
+                      <CellLabel>{t.editor.use}</CellLabel>
                       <Select
-                        ariaLabel={`${h.name} use`}
+                        ariaLabel={t.editor.ariaUse(h.name)}
                         value={h.use}
-                        options={HOP_USES}
+                        options={optionsOf(t.hopUse)}
                         onChange={(u) => patch(h.id, { use: u, time: u === 'dry-hop' ? 4 : u === 'whirlpool' ? 20 : u === 'boil' ? Math.min(h.time, recipe.boilMinutes) : h.time, whirlpoolTempC: u === 'whirlpool' ? (h.whirlpoolTempC ?? 80) : h.whirlpoolTempC })}
                       />
                     </td>
                     <td style={{ width: h.use === 'whirlpool' ? 156 : 84, minWidth: h.use === 'whirlpool' ? 156 : 84 }}>
-                      <CellLabel>{h.use === 'dry-hop' ? 'Days' : h.use === 'boil' || h.use === 'whirlpool' ? 'Minutes' : 'Time'}</CellLabel>
+                      <CellLabel>{h.use === 'dry-hop' ? t.editor.daysLabel : h.use === 'boil' || h.use === 'whirlpool' ? t.editor.minutes : t.editor.time}</CellLabel>
                       {h.use === 'boil' || h.use === 'whirlpool' || h.use === 'dry-hop' ? (
                         <div style={{ display: 'flex', gap: 4 }}>
-                          <NumberInput ariaLabel={`${h.name} time`} unit={h.use === 'dry-hop' ? 'd' : 'min'} decimals={0} max={h.use === 'boil' ? 300 : 90} value={h.time} onChange={(v) => patch(h.id, { time: v })} />
-                          {h.use === 'whirlpool' && <NumberInput ariaLabel={`${h.name} whirlpool temperature`} kind="temperature" system={system} decimals={0} max={212} value={h.whirlpoolTempC ?? 80} onChange={(v) => patch(h.id, { whirlpoolTempC: Math.min(100, v) })} />}
+                          <NumberInput ariaLabel={t.editor.ariaTime(h.name)} unit={h.use === 'dry-hop' ? t.common.daysShort : t.common.min} decimals={0} max={h.use === 'boil' ? 300 : 90} value={h.time} onChange={(v) => patch(h.id, { time: v })} />
+                          {h.use === 'whirlpool' && <NumberInput ariaLabel={t.editor.ariaWhirlpoolTemp(h.name)} kind="temperature" system={system} decimals={0} max={212} value={h.whirlpoolTempC ?? 80} onChange={(v) => patch(h.id, { whirlpoolTempC: Math.min(100, v) })} />}
                         </div>
                       ) : (
-                        <span className="small faint">{h.use === 'first-wort' ? `Full boil +10%` : 'Mash, ≈20% of boil'}</span>
+                        <span className="small faint">{h.use === 'first-wort' ? t.time.hopFirstWort : t.time.hopMash}</span>
                       )}
                     </td>
-                    <td className="r readout" style={{ width: 60, minWidth: 60 }} title={`Utilization ${fmt((st?.utilization ?? 0) * 100, 1)}%`}>
+                    <td className="r readout" style={{ width: 60, minWidth: 60 }} title={t.editor.utilization(fmt((st?.utilization ?? 0) * 100, 1))}>
                       <CellLabel>IBU</CellLabel>
                       {fmt(st?.ibu ?? 0, 1)}
                     </td>
@@ -416,27 +411,29 @@ function HopsSection({ recipe, stats, system, setList, patch }: { recipe: Recipe
 }
 
 function YeastSection({ recipe, system, setList, patch }: { recipe: Recipe; system: UnitSystem; setList: (l: Yeast[]) => void; patch: (id: string, p: Partial<Yeast>) => void }) {
+  const { t } = useI18n();
+  const options = useMemo(() => yeastOptions(t), [t]);
   const list = recipe.yeasts;
   return (
-    <Section title="Yeast" id="yeast" count={list.length} actions={<Picker label="Add yeast" placeholder="Add yeast strain…" options={yeastOptions} onPick={(c) => setList([...list, yeastFromCatalog(c)])} onCustom={(n) => setList([...list, customYeast(n)])} />}>
+    <Section title={t.editor.yeast} id="yeast" count={list.length} actions={<Picker label={t.editor.addYeast} placeholder={t.editor.addYeastPh} options={options} onPick={(c) => setList([...list, yeastFromCatalog(c)])} onCustom={(n) => setList([...list, customYeast(n)])} />}>
       {list.length === 0 ? (
         <div className="empty">
-          <strong>No yeast yet.</strong>
-          FG uses the yeast’s attenuation. Until you add one, it assumes 75%.
+          <strong>{t.editor.noYeastTitle}</strong>
+          {t.editor.noYeastBody}
         </div>
       ) : (
         <div className="table-scroll">
           <table className="itable stack">
             <thead>
               <tr>
-                <th>Strain</th>
-                <th>Form</th>
-                <th className="r">Attenuation</th>
-                <th className="r">Temp. range</th>
-                <th className="r">Packs</th>
-                <th>Starter</th>
+                <th>{t.editor.strain}</th>
+                <th>{t.editor.form}</th>
+                <th className="r">{t.editor.attenuation}</th>
+                <th className="r">{t.editor.tempRange}</th>
+                <th className="r">{t.editor.packs}</th>
+                <th>{t.editor.starter}</th>
                 <th>
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">{t.common.actions}</span>
                 </th>
               </tr>
             </thead>
@@ -444,36 +441,36 @@ function YeastSection({ recipe, system, setList, patch }: { recipe: Recipe; syst
               {list.map((y, i) => (
                 <tr key={y.id}>
                   <td className="name-cell">
-                    <CellLabel>Strain</CellLabel>
-                    <input className="input name-input" aria-label="Yeast name" value={y.name} onChange={(e) => patch(y.id, { name: e.target.value })} />
+                    <CellLabel>{t.editor.strain}</CellLabel>
+                    <input className="input name-input" aria-label={t.editor.yeastName} value={y.name} onChange={(e) => patch(y.id, { name: e.target.value })} />
                     <div className="meta" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <input className="input meta-select" aria-label="Yeast lab and product" value={[y.lab, y.product].filter(Boolean).join(' ')} onChange={(e) => patch(y.id, { lab: e.target.value, product: undefined })} />
+                      <input className="input meta-select" aria-label={t.editor.yeastLab} value={[y.lab, y.product].filter(Boolean).join(' ')} onChange={(e) => patch(y.id, { lab: e.target.value, product: undefined })} />
                     </div>
                   </td>
                   <td style={{ width: 96, minWidth: 96 }}>
-                    <CellLabel>Form</CellLabel>
-                    <Select ariaLabel={`${y.name} form`} value={y.form} options={[{ value: 'dry', label: 'Dry' }, { value: 'liquid', label: 'Liquid' }]} onChange={(v) => patch(y.id, { form: v })} />
+                    <CellLabel>{t.editor.form}</CellLabel>
+                    <Select ariaLabel={t.editor.ariaForm(y.name)} value={y.form} options={optionsOf(t.yeastForm)} onChange={(v) => patch(y.id, { form: v })} />
                   </td>
                   <td style={{ width: 92, minWidth: 92 }}>
-                    <CellLabel>Attenuation</CellLabel>
-                    <NumberInput ariaLabel={`${y.name} attenuation`} unit="%" decimals={0} max={100} value={y.attenuationPct} onChange={(v) => patch(y.id, { attenuationPct: v })} />
+                    <CellLabel>{t.editor.attenuation}</CellLabel>
+                    <NumberInput ariaLabel={t.editor.ariaAttenuation(y.name)} unit="%" decimals={0} max={100} value={y.attenuationPct} onChange={(v) => patch(y.id, { attenuationPct: v })} />
                   </td>
                   <td style={{ width: 150, minWidth: 150 }}>
-                    <CellLabel>Temperature range</CellLabel>
+                    <CellLabel>{t.editor.tempRangeLong}</CellLabel>
                     <div style={{ display: 'flex', gap: 4 }}>
-                      <NumberInput ariaLabel={`${y.name} minimum temperature`} kind="temperature" system={system} decimals={0} min={-10} max={120} value={y.tempMinC} onChange={(v) => patch(y.id, { tempMinC: v })} />
-                      <NumberInput ariaLabel={`${y.name} maximum temperature`} kind="temperature" system={system} decimals={0} min={-10} max={120} value={y.tempMaxC} onChange={(v) => patch(y.id, { tempMaxC: v })} />
+                      <NumberInput ariaLabel={t.editor.ariaMinTemp(y.name)} kind="temperature" system={system} decimals={0} min={-10} max={120} value={y.tempMinC} onChange={(v) => patch(y.id, { tempMinC: v })} />
+                      <NumberInput ariaLabel={t.editor.ariaMaxTemp(y.name)} kind="temperature" system={system} decimals={0} min={-10} max={120} value={y.tempMaxC} onChange={(v) => patch(y.id, { tempMaxC: v })} />
                     </div>
                   </td>
                   <td style={{ width: 70, minWidth: 70 }}>
-                    <CellLabel>Packs</CellLabel>
-                    <NumberInput ariaLabel={`${y.name} packs`} decimals={1} max={50} value={y.packs} onChange={(v) => patch(y.id, { packs: v })} />
+                    <CellLabel>{t.editor.packs}</CellLabel>
+                    <NumberInput ariaLabel={t.editor.ariaPacks(y.name)} decimals={1} max={50} value={y.packs} onChange={(v) => patch(y.id, { packs: v })} />
                   </td>
                   <td style={{ width: 80, minWidth: 80 }}>
-                    <CellLabel>Starter</CellLabel>
+                    <CellLabel>{t.editor.starter}</CellLabel>
                     <label className="check">
                       <input type="checkbox" checked={y.starter} onChange={(e) => patch(y.id, { starter: e.target.checked })} />
-                      <span className="small">Yes</span>
+                      <span className="small">{t.common.yes}</span>
                     </label>
                   </td>
                   <td className="actions-cell" style={{ width: 112, minWidth: 112 }}>
@@ -485,7 +482,7 @@ function YeastSection({ recipe, system, setList, patch }: { recipe: Recipe; syst
           </table>
           {list.length > 1 && (
             <div style={{ padding: '0 16px 12px' }}>
-              <Notice tone="info">With several strains, FG uses the highest attenuation.</Notice>
+              <Notice tone="info">{t.editor.multiYeast}</Notice>
             </div>
           )}
         </div>
@@ -495,26 +492,28 @@ function YeastSection({ recipe, system, setList, patch }: { recipe: Recipe; syst
 }
 
 function MiscSection({ recipe, setList, patch }: { recipe: Recipe; setList: (l: Misc[]) => void; patch: (id: string, p: Partial<Misc>) => void }) {
+  const { t } = useI18n();
+  const options = useMemo(() => miscOptions(t), [t]);
   const list = recipe.miscs;
   return (
-    <Section title="Other ingredients" id="misc" count={list.length} actions={<Picker label="Add other ingredient" placeholder="Add spice, fruit, salt, fining…" options={miscOptions} onPick={(c) => setList([...list, miscFromCatalog(c)])} onCustom={(n) => setList([...list, customMisc(n)])} />}>
+    <Section title={t.editor.misc} id="misc" count={list.length} actions={<Picker label={t.editor.addMisc} placeholder={t.editor.addMiscPh} options={options} onPick={(c) => setList([...list, miscFromCatalog(c)])} onCustom={(n) => setList([...list, customMisc(n)])} />}>
       {list.length === 0 ? (
         <div className="empty">
-          <strong>Nothing else yet.</strong>
-          Finings, water salts, spices, fruit, coffee and other additions go here.
+          <strong>{t.editor.noMiscTitle}</strong>
+          {t.editor.noMiscBody}
         </div>
       ) : (
         <div className="table-scroll">
           <table className="itable stack">
             <thead>
               <tr>
-                <th>Ingredient</th>
-                <th>Type</th>
-                <th>Added</th>
-                <th className="r">Time</th>
-                <th className="r">Amount</th>
+                <th>{t.editor.ingredient}</th>
+                <th>{t.editor.type}</th>
+                <th>{t.editor.added}</th>
+                <th className="r">{t.editor.time}</th>
+                <th className="r">{t.editor.amount}</th>
                 <th>
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">{t.common.actions}</span>
                 </th>
               </tr>
             </thead>
@@ -522,26 +521,26 @@ function MiscSection({ recipe, setList, patch }: { recipe: Recipe; setList: (l: 
               {list.map((m, i) => (
                 <tr key={m.id}>
                   <td className="name-cell">
-                    <CellLabel>Ingredient</CellLabel>
-                    <input className="input name-input" aria-label="Ingredient name" value={m.name} onChange={(e) => patch(m.id, { name: e.target.value })} />
+                    <CellLabel>{t.editor.ingredient}</CellLabel>
+                    <input className="input name-input" aria-label={t.editor.ingredientName} value={m.name} onChange={(e) => patch(m.id, { name: e.target.value })} />
                   </td>
                   <td style={{ width: 112, minWidth: 112 }}>
-                    <CellLabel>Type</CellLabel>
-                    <Select<MiscType> ariaLabel={`${m.name} type`} value={m.type} options={(Object.keys(MISC_TYPE_LABEL) as MiscType[]).map((t) => ({ value: t, label: MISC_TYPE_LABEL[t] }))} onChange={(v) => patch(m.id, { type: v })} />
+                    <CellLabel>{t.editor.type}</CellLabel>
+                    <Select<MiscType> ariaLabel={t.editor.ariaType(m.name)} value={m.type} options={optionsOf<MiscType>(t.miscType)} onChange={(v) => patch(m.id, { type: v })} />
                   </td>
                   <td style={{ width: 118, minWidth: 118 }}>
-                    <CellLabel>Added</CellLabel>
-                    <Select<MiscUse> ariaLabel={`${m.name} addition`} value={m.use} options={(Object.keys(MISC_USE_LABEL) as MiscUse[]).map((t) => ({ value: t, label: MISC_USE_LABEL[t] }))} onChange={(v) => patch(m.id, { use: v })} />
+                    <CellLabel>{t.editor.added}</CellLabel>
+                    <Select<MiscUse> ariaLabel={t.editor.ariaAddition(m.name)} value={m.use} options={optionsOf<MiscUse>(t.miscUse)} onChange={(v) => patch(m.id, { use: v })} />
                   </td>
                   <td style={{ width: 92, minWidth: 92 }}>
-                    <CellLabel>Time</CellLabel>
-                    {MISC_TIME_UNIT[m.use] ? <NumberInput ariaLabel={`${m.name} time`} unit={MISC_TIME_UNIT[m.use]} decimals={0} max={500} value={m.time} onChange={(v) => patch(m.id, { time: v })} /> : <span className="small faint">At packaging</span>}
+                    <CellLabel>{t.editor.time}</CellLabel>
+                    {miscTimeUnit(m.use, t) ? <NumberInput ariaLabel={t.editor.ariaTime(m.name)} unit={miscTimeUnit(m.use, t)} decimals={0} max={500} value={m.time} onChange={(v) => patch(m.id, { time: v })} /> : <span className="small faint">{t.time.atPackaging}</span>}
                   </td>
                   <td style={{ width: 170, minWidth: 170 }}>
-                    <CellLabel>Amount</CellLabel>
+                    <CellLabel>{t.editor.amount}</CellLabel>
                     <div style={{ display: 'flex', gap: 4 }}>
-                      <NumberInput ariaLabel={`${m.name} amount`} decimals={2} max={100000} value={m.amount} onChange={(v) => patch(m.id, { amount: v })} />
-                      <Select<MiscUnit> ariaLabel={`${m.name} unit`} value={m.unit} options={MISC_UNITS.map((u) => ({ value: u, label: u }))} onChange={(v) => patch(m.id, { unit: v })} />
+                      <NumberInput ariaLabel={t.editor.ariaAmount(m.name)} decimals={2} max={100000} value={m.amount} onChange={(v) => patch(m.id, { amount: v })} />
+                      <Select<MiscUnit> ariaLabel={t.editor.ariaUnit(m.name)} value={m.unit} options={MISC_UNITS.map((u) => ({ value: u, label: u }))} onChange={(v) => patch(m.id, { unit: v })} />
                     </div>
                   </td>
                   <td className="actions-cell" style={{ width: 112, minWidth: 112 }}>
@@ -558,6 +557,7 @@ function MiscSection({ recipe, setList, patch }: { recipe: Recipe; setList: (l: 
 }
 
 function StepsSection<T extends { id: string; name: string; tempC: number }>({ title, items, system, timeUnit, timeKey, onChange, newItem, hint }: { title: string; items: T[]; system: UnitSystem; timeUnit: string; timeKey: keyof T & string; onChange: (l: T[]) => void; newItem: () => T; hint?: string }) {
+  const { t } = useI18n();
   const patch = (id: string, p: Partial<T>) => onChange(items.map((x) => (x.id === id ? { ...x, ...p } : x)));
   return (
     <Section
@@ -565,22 +565,22 @@ function StepsSection<T extends { id: string; name: string; tempC: number }>({ t
       count={items.length}
       actions={
         <button type="button" className="btn btn-sm" onClick={() => onChange([...items, newItem()])}>
-          <Plus size={14} aria-hidden="true" /> Add step
+          <Plus size={14} aria-hidden="true" /> {t.editor.addStep}
         </button>
       }
     >
       {items.length === 0 ? (
-        <div className="empty">No steps yet.</div>
+        <div className="empty">{t.editor.noSteps}</div>
       ) : (
         <div className="table-scroll">
           <table className="itable stack">
             <thead>
               <tr>
-                <th>Step</th>
-                <th className="r">Temperature</th>
-                <th className="r">Duration</th>
+                <th>{t.editor.step}</th>
+                <th className="r">{t.editor.temperature}</th>
+                <th className="r">{t.editor.duration}</th>
                 <th>
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">{t.common.actions}</span>
                 </th>
               </tr>
             </thead>
@@ -588,16 +588,16 @@ function StepsSection<T extends { id: string; name: string; tempC: number }>({ t
               {items.map((st, i) => (
                 <tr key={st.id}>
                   <td className="name-cell">
-                    <CellLabel>Step</CellLabel>
-                    <input className="input name-input" aria-label="Step name" value={st.name} onChange={(e) => patch(st.id, { name: e.target.value } as Partial<T>)} />
+                    <CellLabel>{t.editor.step}</CellLabel>
+                    <input className="input name-input" aria-label={t.editor.stepName} value={st.name} onChange={(e) => patch(st.id, { name: e.target.value } as Partial<T>)} />
                   </td>
                   <td style={{ width: 112, minWidth: 112 }}>
-                    <CellLabel>Temperature</CellLabel>
-                    <NumberInput ariaLabel={`${st.name} temperature`} kind="temperature" system={system} min={-10} max={220} value={st.tempC} onChange={(v) => patch(st.id, { tempC: v } as Partial<T>)} />
+                    <CellLabel>{t.editor.temperature}</CellLabel>
+                    <NumberInput ariaLabel={t.editor.ariaTemp(st.name)} kind="temperature" system={system} min={-10} max={220} value={st.tempC} onChange={(v) => patch(st.id, { tempC: v } as Partial<T>)} />
                   </td>
                   <td style={{ width: 110, minWidth: 110 }}>
-                    <CellLabel>Duration</CellLabel>
-                    <NumberInput ariaLabel={`${st.name} duration`} unit={timeUnit} decimals={0} max={1000} value={st[timeKey] as number} onChange={(v) => patch(st.id, { [timeKey]: v } as Partial<T>)} />
+                    <CellLabel>{t.editor.duration}</CellLabel>
+                    <NumberInput ariaLabel={t.editor.ariaDuration(st.name)} unit={timeUnit} decimals={0} max={1000} value={st[timeKey] as number} onChange={(v) => patch(st.id, { [timeKey]: v } as Partial<T>)} />
                   </td>
                   <td className="actions-cell" style={{ width: 96, minWidth: 96 }}>
                     <RowActions name={st.name} index={i} length={items.length} onMove={(a, b) => onChange(moveItem(items, a, b))} onRemove={() => onChange(items.filter((x) => x.id !== st.id))} />
@@ -614,26 +614,27 @@ function StepsSection<T extends { id: string; name: string; tempC: number }>({ t
 }
 
 function EquipmentSection({ recipe, system, update }: { recipe: Recipe; system: UnitSystem; update: (p: Partial<Recipe>) => void }) {
+  const { t } = useI18n();
   const eq = recipe.equipment;
   const set = (p: Partial<Recipe['equipment']>) => update({ equipment: { ...eq, ...p } });
   return (
-    <Section title="Equipment and losses" id="equipment">
+    <Section title={t.editor.equipment} id="equipment">
       <div className="section-body grid grid-4">
-        <NumberField label="Boil-off rate" kind="rate" system={system} value={eq.boilOffLPerHr} onChange={(v) => set({ boilOffLPerHr: v })} max={100} />
-        <NumberField label="Kettle loss" kind="volume" system={system} value={eq.kettleLossL} onChange={(v) => set({ kettleLossL: v })} max={100} hint="Trub, chiller, dead space" />
-        <NumberField label="Cooling shrinkage" unit="%" decimals={1} max={10} value={eq.coolingShrinkagePct} onChange={(v) => set({ coolingShrinkagePct: v })} />
-        <NumberField label="Fermenter loss" kind="volume" system={system} value={eq.fermenterLossL} onChange={(v) => set({ fermenterLossL: v })} max={100} hint="Yeast cake, samples" />
-        <NumberField label="Grain absorption" kind="absorption" system={system} value={eq.grainAbsorptionLPerKg} onChange={(v) => set({ grainAbsorptionLPerKg: v })} max={5} />
-        <NumberField label="Hop absorption" unit="mL/g" decimals={1} value={eq.hopAbsorptionMlPerG} onChange={(v) => set({ hopAbsorptionMlPerG: v })} max={50} hint="Kettle hops only" />
+        <NumberField label={t.eq.boilOff} kind="rate" system={system} value={eq.boilOffLPerHr} onChange={(v) => set({ boilOffLPerHr: v })} max={100} />
+        <NumberField label={t.eq.kettleLoss} kind="volume" system={system} value={eq.kettleLossL} onChange={(v) => set({ kettleLossL: v })} max={100} hint={t.eq.kettleLossHint} />
+        <NumberField label={t.eq.shrinkage} unit="%" decimals={1} max={10} value={eq.coolingShrinkagePct} onChange={(v) => set({ coolingShrinkagePct: v })} />
+        <NumberField label={t.eq.fermenterLoss} kind="volume" system={system} value={eq.fermenterLossL} onChange={(v) => set({ fermenterLossL: v })} max={100} hint={t.eq.fermenterLossHint} />
+        <NumberField label={t.eq.grainAbsorption} kind="absorption" system={system} value={eq.grainAbsorptionLPerKg} onChange={(v) => set({ grainAbsorptionLPerKg: v })} max={5} />
+        <NumberField label={t.eq.hopAbsorption} unit="mL/g" decimals={1} value={eq.hopAbsorptionMlPerG} onChange={(v) => set({ hopAbsorptionMlPerG: v })} max={50} hint={t.eq.hopAbsorptionHint} />
         {recipe.method !== 'biab' && recipe.method !== 'extract' && (
           <>
-            <NumberField label="Mash thickness" kind="thickness" system={system} value={eq.mashThicknessLPerKg} onChange={(v) => set({ mashThicknessLPerKg: v })} max={10} />
-            <NumberField label="Mash tun dead space" kind="volume" system={system} value={eq.mashTunDeadspaceL} onChange={(v) => set({ mashTunDeadspaceL: v })} max={50} />
+            <NumberField label={t.eq.mashThickness} kind="thickness" system={system} value={eq.mashThicknessLPerKg} onChange={(v) => set({ mashThicknessLPerKg: v })} max={10} />
+            <NumberField label={t.eq.deadspace} kind="volume" system={system} value={eq.mashTunDeadspaceL} onChange={(v) => set({ mashTunDeadspaceL: v })} max={50} />
           </>
         )}
-        <NumberField label="Grain temperature" kind="temperature" system={system} min={-20} max={140} value={eq.grainTempC} onChange={(v) => set({ grainTempC: v })} />
-        <NumberField label="Kettle volume" kind="volume" system={system} value={eq.kettleVolumeL} onChange={(v) => set({ kettleVolumeL: v })} max={2000} hint="For capacity warnings" />
-        {recipe.method !== 'biab' && recipe.method !== 'extract' && <NumberField label="Mash tun volume" kind="volume" system={system} value={eq.mashTunVolumeL} onChange={(v) => set({ mashTunVolumeL: v })} max={2000} />}
+        <NumberField label={t.eq.grainTemp} kind="temperature" system={system} min={-20} max={140} value={eq.grainTempC} onChange={(v) => set({ grainTempC: v })} />
+        <NumberField label={t.eq.kettleVolume} kind="volume" system={system} value={eq.kettleVolumeL} onChange={(v) => set({ kettleVolumeL: v })} max={2000} hint={t.eq.kettleVolumeHint} />
+        {recipe.method !== 'biab' && recipe.method !== 'extract' && <NumberField label={t.eq.tunVolume} kind="volume" system={system} value={eq.mashTunVolumeL} onChange={(v) => set({ mashTunVolumeL: v })} max={2000} />}
       </div>
     </Section>
   );

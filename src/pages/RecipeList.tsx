@@ -6,12 +6,13 @@ import { srmToHex } from '../domain/color';
 import { findStyle } from '../data/styles';
 import { duplicateRecipe, newRecipe, uid } from '../store/factory';
 import { linkProps, navigate } from '../router';
-import { fmt, fmtSg, METHOD_LABEL, relativeDate, vol } from '../ui/format';
+import { fmt, fmtSg, relativeDate, vol } from '../ui/format';
 import { ConfirmDialog, Notice, Toast } from '../ui/common';
 import { exportFileSchema, describeIssues } from '../store/schema';
 import { downloadPdf } from '../ui/pdfAction';
 import type { Recipe } from '../domain/types';
 import { downloadText } from '../ui/download';
+import { useI18n } from '../i18n';
 
 export function RecipeList() {
   const { data, upsertRecipe, deleteRecipe, importRecipes, persistent, skipped, mode, localImportCount, importLocal, dismissLocalImport } = useStore();
@@ -21,6 +22,7 @@ export function RecipeList() {
   const [importErrors, setImportErrors] = useState<string[] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const settings = data.settings;
+  const { t, lang } = useI18n();
 
   const rows = useMemo(
     () =>
@@ -37,7 +39,7 @@ export function RecipeList() {
 
   const create = () => {
     const profile = data.equipment[0];
-    const r = newRecipe(profile, settings.brewerName);
+    const r = newRecipe(profile, settings.brewerName, { untitled: t.common.untitled, ...t.defaults });
     upsertRecipe(r);
     navigate({ name: 'edit', id: r.id });
   };
@@ -45,43 +47,43 @@ export function RecipeList() {
   const exportAll = () => {
     const file = { format: 'brewpal-recipes', version: 1, exportedAt: new Date().toISOString(), recipes: data.recipes };
     downloadText(JSON.stringify(file, null, 2), `brewlab-recipes-${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
-    setToast(`Exported ${data.recipes.length} recipe${data.recipes.length === 1 ? '' : 's'}`);
+    setToast(t.list.exported(data.recipes.length));
   };
 
   const onImport = async (file: File) => {
     setImportErrors(null);
     if (file.size > 5_000_000) {
-      setImportErrors(['The file is larger than 5 MB. Export files from this app are much smaller; check that you chose the right file.']);
+      setImportErrors([t.list.tooLarge]);
       return;
     }
     let json: unknown;
     try {
       json = JSON.parse(await file.text());
     } catch {
-      setImportErrors(['The file is not valid JSON. Choose a file exported from Brewlab.']);
+      setImportErrors([t.list.notJson]);
       return;
     }
     const parsed = exportFileSchema.safeParse(json);
     if (!parsed.success) {
-      setImportErrors(['The file is not a Brewlab recipe export, or some values are out of range:', ...describeIssues(parsed.error)]);
+      setImportErrors([t.list.notExport, ...describeIssues(parsed.error)]);
       return;
     }
     const existing = new Set(data.recipes.map((r) => r.id));
     const incoming = (parsed.data.recipes as Recipe[]).map((r) => (existing.has(r.id) ? { ...r, id: uid('r_') } : r));
     importRecipes(incoming);
-    setToast(`Imported ${incoming.length} recipe${incoming.length === 1 ? '' : 's'}`);
+    setToast(t.list.imported(incoming.length));
   };
 
   return (
     <div className="page">
       <div className="page-head">
         <div>
-          <h1>My Recipes</h1>
-          <p className="sub">{mode === 'cloud' ? 'Recipes are saved to your account and available on any device where you sign in.' : 'Recipes are saved in this browser. Export them to keep a backup or move them to another device.'}</p>
+          <h1>{t.list.title}</h1>
+          <p className="sub">{mode === 'cloud' ? t.list.subCloud : t.list.subLocal}</p>
         </div>
         <div className="actions">
           <button type="button" className="btn" onClick={() => fileRef.current?.click()}>
-            <Upload size={15} aria-hidden="true" /> Import
+            <Upload size={15} aria-hidden="true" /> {t.list.import}
           </button>
           <input
             ref={fileRef}
@@ -95,10 +97,10 @@ export function RecipeList() {
             }}
           />
           <button type="button" className="btn" onClick={exportAll} disabled={data.recipes.length === 0}>
-            <Download size={15} aria-hidden="true" /> Export all
+            <Download size={15} aria-hidden="true" /> {t.list.exportAll}
           </button>
           <button type="button" className="btn btn-primary" onClick={create}>
-            <Plus size={15} aria-hidden="true" /> New recipe
+            <Plus size={15} aria-hidden="true" /> {t.list.newRecipe}
           </button>
         </div>
       </div>
@@ -107,18 +109,18 @@ export function RecipeList() {
         {localImportCount > 0 && (
           <div className="notice info" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ flex: 1, minWidth: 200 }}>
-              This browser has {localImportCount} recipe{localImportCount === 1 ? '' : 's'} from before you signed in. Copy {localImportCount === 1 ? 'it' : 'them'} into your account?
+              {t.list.localImport(localImportCount)}
             </span>
-            <button type="button" className="btn btn-sm btn-primary" onClick={() => { importLocal(); setToast(`Imported ${localImportCount} recipe${localImportCount === 1 ? '' : 's'}`); }}>
-              Import {localImportCount === 1 ? 'recipe' : 'recipes'}
+            <button type="button" className="btn btn-sm btn-primary" onClick={() => { importLocal(); setToast(t.list.imported(localImportCount)); }}>
+              {t.list.importButton(localImportCount)}
             </button>
             <button type="button" className="btn btn-sm btn-ghost" onClick={dismissLocalImport}>
-              Not now
+              {t.list.notNow}
             </button>
           </div>
         )}
-        {!persistent && <Notice tone="bad">This browser is blocking local storage, so recipes will be lost when you close the tab. Export them before leaving.</Notice>}
-        {skipped > 0 && <Notice>{skipped} saved item{skipped === 1 ? '' : 's'} could not be read and {skipped === 1 ? 'was' : 'were'} skipped.</Notice>}
+        {!persistent && <Notice tone="bad">{t.list.storageBlocked}</Notice>}
+        {skipped > 0 && <Notice>{t.list.skipped(skipped)}</Notice>}
         {importErrors && (
           <Notice tone="bad">
             {importErrors.map((e, i) => (
@@ -134,39 +136,39 @@ export function RecipeList() {
         <div className="toolbar">
           <span className="search" style={{ maxWidth: 360 }}>
             <Search size={15} aria-hidden="true" />
-            <input className="input" style={{ paddingLeft: 32 }} aria-label="Filter recipes" placeholder="Filter by name, style or ingredient" value={q} onChange={(e) => setQ(e.target.value)} />
+            <input className="input" style={{ paddingLeft: 32 }} aria-label={t.list.filterLabel} placeholder={t.list.filterPlaceholder} value={q} onChange={(e) => setQ(e.target.value)} />
           </span>
           <span className="small faint">
-            {rows.length} of {data.recipes.length}
+            {t.list.countOf(rows.length, data.recipes.length)}
           </span>
         </div>
         {data.recipes.length === 0 ? (
           <div className="empty" style={{ padding: 32 }}>
-            <strong>No recipes yet.</strong>
-            Create a recipe to start designing. Stats update as you add ingredients, and you can download a PDF sheet at any time.
+            <strong>{t.list.emptyTitle}</strong>
+            {t.list.emptyBody}
             <div style={{ marginTop: 12 }}>
               <button type="button" className="btn btn-primary" onClick={create}>
-                <Plus size={15} aria-hidden="true" /> New recipe
+                <Plus size={15} aria-hidden="true" /> {t.list.newRecipe}
               </button>
             </div>
           </div>
         ) : rows.length === 0 ? (
-          <div className="empty">No recipes match “{q}”.</div>
+          <div className="empty">{t.list.noMatch(q)}</div>
         ) : (
           <div className="table-scroll">
             <table className="recipe-table">
               <thead>
                 <tr>
-                  <th>Recipe</th>
-                  <th className="hide-sm">Style</th>
-                  <th className="r hide-sm">Batch</th>
+                  <th>{t.list.colRecipe}</th>
+                  <th className="hide-sm">{t.list.colStyle}</th>
+                  <th className="r hide-sm">{t.list.colBatch}</th>
                   <th className="r">OG</th>
                   <th className="r">ABV</th>
                   <th className="r">IBU</th>
-                  <th className="r">Color</th>
-                  <th className="hide-sm">Updated</th>
+                  <th className="r">{t.list.colColor}</th>
+                  <th className="hide-sm">{t.list.colUpdated}</th>
                   <th>
-                    <span className="sr-only">Actions</span>
+                    <span className="sr-only">{t.common.actions}</span>
                   </th>
                 </tr>
               </thead>
@@ -175,9 +177,9 @@ export function RecipeList() {
                   <tr key={r.id}>
                     <td>
                       <a className="rname" {...linkProps({ name: 'recipe', id: r.id })}>
-                        {r.name || 'Untitled recipe'}
+                        {r.name || t.common.untitled}
                       </a>
-                      <div className="xs faint">{METHOD_LABEL[r.method]}</div>
+                      <div className="xs faint">{t.method[r.method]}</div>
                     </td>
                     <td className="hide-sm small muted">{style ? `${style.code} ${style.name}` : '—'}</td>
                     <td className="r mono small hide-sm">{vol(r.batchVolumeL, settings.unitSystem, 1)}</td>
@@ -188,28 +190,28 @@ export function RecipeList() {
                       <span className="swatch-dot" style={{ background: srmToHex(stats.srm) }} />
                       {fmt(stats.srm, 0)}
                     </td>
-                    <td className="hide-sm small faint">{relativeDate(r.updatedAt)}</td>
+                    <td className="hide-sm small faint">{relativeDate(r.updatedAt, t)}</td>
                     <td>
                       <div className="row-actions">
-                        <a className="icon-btn" aria-label={`Edit ${r.name}`} title="Edit" {...linkProps({ name: 'edit', id: r.id })}>
+                        <a className="icon-btn" aria-label={t.list.editName(r.name)} title={t.common.edit} {...linkProps({ name: 'edit', id: r.id })}>
                           <Pencil size={14} />
                         </a>
-                        <button type="button" className="icon-btn" aria-label={`Download PDF of ${r.name}`} title="Download PDF" onClick={() => void downloadPdf(r, stats, settings)}>
+                        <button type="button" className="icon-btn" aria-label={t.list.pdfName(r.name)} title={t.common.downloadPdf} onClick={() => void downloadPdf(r, stats, settings, lang)}>
                           <FileDown size={15} />
                         </button>
                         <button
                           type="button"
                           className="icon-btn"
-                          aria-label={`Duplicate ${r.name}`}
-                          title="Duplicate"
+                          aria-label={t.list.duplicateName(r.name)}
+                          title={t.common.duplicate}
                           onClick={() => {
-                            upsertRecipe(duplicateRecipe(r));
-                            setToast(`Duplicated ${r.name}`);
+                            upsertRecipe(duplicateRecipe(r, t.common.copyOf));
+                            setToast(t.list.duplicated(r.name));
                           }}
                         >
                           <Copy size={14} />
                         </button>
-                        <button type="button" className="icon-btn danger" aria-label={`Delete ${r.name}`} title="Delete" onClick={() => setToDelete(r)}>
+                        <button type="button" className="icon-btn danger" aria-label={t.list.deleteName(r.name)} title={t.common.delete} onClick={() => setToDelete(r)}>
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -224,14 +226,14 @@ export function RecipeList() {
 
       {toDelete && (
         <ConfirmDialog
-          title={`Delete ${toDelete.name || 'this recipe'}?`}
-          body={`This removes the recipe from ${mode === 'cloud' ? 'your account' : 'this browser'}. It cannot be undone unless you have an export.`}
-          confirmLabel="Delete recipe"
+          title={t.list.deleteTitle(toDelete.name)}
+          body={t.list.deleteBody(mode === 'cloud')}
+          confirmLabel={t.list.deleteConfirm}
           danger
           onCancel={() => setToDelete(null)}
           onConfirm={() => {
             deleteRecipe(toDelete.id);
-            setToast(`Deleted ${toDelete.name}`);
+            setToast(t.list.deleted(toDelete.name));
             setToDelete(null);
           }}
         />

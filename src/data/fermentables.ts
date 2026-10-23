@@ -83,12 +83,3 @@ export const FERMENTABLES: FermentableCatalogItem[] = [
   g('maltodextrin', 'Maltodextrin', 'sugar', 40, 0, { fermentable: false, notes: 'Adds body; essentially unfermentable.' }),
 ];
 
-export const FERMENTABLE_CATEGORY_LABEL: Record<FermentableCategory, string> = {
-  base: 'Base malt',
-  crystal: 'Crystal / caramel',
-  specialty: 'Specialty',
-  roasted: 'Roasted',
-  adjunct: 'Adjunct',
-  extract: 'Extract',
-  sugar: 'Sugar',
-};

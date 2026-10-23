@@ -5,16 +5,18 @@ import { signInWithGoogle, signOut, supabase } from './client';
 import { loadCloud, type CloudLoad } from './sync';
 import { AppStoreProvider, type Account } from '../store/AppStore';
 import { Notice } from '../ui/common';
+import { LangToggle, useI18n, type Dict } from '../i18n';
 
-function accountFrom(session: Session): Account {
+function accountFrom(session: Session, t: Dict): Account {
   const u = session.user;
   const meta = (u.user_metadata ?? {}) as { full_name?: string; name?: string; avatar_url?: string; picture?: string };
-  return { id: u.id, email: u.email ?? '', name: meta.full_name || meta.name || u.email || 'Brewer', avatarUrl: meta.avatar_url || meta.picture };
+  return { id: u.id, email: u.email ?? '', name: meta.full_name || meta.name || u.email || t.signin.defaultName, avatarUrl: meta.avatar_url || meta.picture };
 }
 
 /** Signs the user in with Google, loads their data, then renders the app in cloud mode. */
 export function CloudRoot({ children }: { children: ReactNode }) {
   const client = supabase!;
+  const { t } = useI18n();
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [load, setLoad] = useState<CloudLoad | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -27,37 +29,38 @@ export function CloudRoot({ children }: { children: ReactNode }) {
 
   const userId = session?.user.id;
   const fetchData = useCallback(() => {
+    if (!userId) return;
     setError(null);
     setLoad(null);
-    loadCloud(client)
+    loadCloud(client, userId)
       .then(setLoad)
-      .catch((e: Error) => setError(`Could not load your recipes: ${e.message}`));
-  }, [client]);
+      .catch((e: Error) => setError(e.message));
+  }, [client, userId]);
 
   useEffect(() => {
     if (userId) fetchData();
     else setLoad(null);
   }, [userId, fetchData]);
 
-  if (session === undefined) return <Splash label="Checking your sign-in…" />;
+  if (session === undefined) return <Splash label={t.signin.checking} />;
   if (!session) return <SignIn />;
   if (error)
     return (
       <Splash>
-        <Notice tone="bad">{error}</Notice>
+        <Notice tone="bad">{t.signin.loadError(error)}</Notice>
         <div className="actions" style={{ justifyContent: 'center' }}>
           <button type="button" className="btn btn-primary" onClick={fetchData}>
-            Try again
+            {t.signin.tryAgain}
           </button>
           <button type="button" className="btn" onClick={() => void signOut()}>
-            Sign out
+            {t.app.signOut}
           </button>
         </div>
       </Splash>
     );
-  if (!load) return <Splash label="Loading your recipes…" />;
+  if (!load) return <Splash label={t.signin.loading} />;
   return (
-    <AppStoreProvider key={session.user.id} cloud={{ client, account: accountFrom(session), initial: load, signOut: () => void signOut() }}>
+    <AppStoreProvider key={session.user.id} cloud={{ client, account: accountFrom(session, t), initial: load, signOut: () => void signOut() }}>
       {children}
     </AppStoreProvider>
   );
@@ -80,6 +83,10 @@ function Splash({ label, children }: { label?: string; children?: ReactNode }) {
 }
 
 function SignIn() {
+  const { t } = useI18n();
+  useEffect(() => {
+    document.title = t.app.docTitle;
+  }, [t]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const go = async () => {
@@ -96,12 +103,12 @@ function SignIn() {
       <main className="signin-card">
         <Brand />
         <div>
-          <h1 style={{ fontSize: '1.5rem' }}>Design beer recipes with live brewing math</h1>
+          <h1 style={{ fontSize: '1.5rem' }}>{t.signin.headline}</h1>
           <p className="muted small" style={{ marginTop: 8 }}>
-            Sign in to save recipes and equipment profiles to your account and open them on any device.
+            {t.signin.intro}
           </p>
         </div>
-        {error && <Notice tone="bad">Google sign-in failed: {error}</Notice>}
+        {error && <Notice tone="bad">{t.signin.failed(error)}</Notice>}
         <button type="button" className="btn google-btn" onClick={go} disabled={busy}>
           <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
             <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
@@ -109,9 +116,12 @@ function SignIn() {
             <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z" />
             <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
           </svg>
-          {busy ? 'Opening Google…' : 'Continue with Google'}
+          {busy ? t.signin.opening : t.signin.continue}
         </button>
-        <p className="xs faint">We only use your Google account to sign you in. Your recipes are private to you.</p>
+        <p className="xs faint">{t.signin.privacy}</p>
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <LangToggle />
+        </div>
       </main>
     </div>
   );

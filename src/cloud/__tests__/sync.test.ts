@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { diff, isEmpty, loadCloud, mergeChanges, pushChanges } from '../sync';
+import { diff, isEmpty, loadCloud, loadPublicRecipes, mergeChanges, pushChanges } from '../sync';
 import { defaultProfiles, exampleRecipe, duplicateRecipe } from '../../store/factory';
 import { DEFAULT_SETTINGS } from '../../store/schema';
 import type { AppData } from '../../store/storage';
@@ -64,7 +64,17 @@ function fakeClient(tables: Record<string, unknown[]> = {}, fail?: string) {
       return {
         select: () => {
           const rows = tables[table] ?? [];
-          return { order: () => result(rows), maybeSingle: () => result(rows[0] ?? null), then: (f: (v: unknown) => unknown) => result(rows).then(f) };
+          const q = {
+            eq: (col: string, val: unknown) => {
+              calls.push({ table, op: 'eq', arg: [col, val] });
+              return q;
+            },
+            order: () => q,
+            limit: () => q,
+            maybeSingle: () => result(rows[0] ?? null),
+            then: (f: (v: unknown) => unknown) => result(rows).then(f),
+          };
+          return q;
         },
         upsert: (arg: unknown, opts: unknown) => {
           calls.push({ table, op: 'upsert', arg, opts });
@@ -104,11 +114,27 @@ describe('loadCloud', () => {
   it('validates rows and reports an empty account', async () => {
     const a = base();
     const { client } = fakeClient({ recipes: [{ data: a.recipes[0] }, { data: { name: 'broken' } }], equipment_profiles: [{ data: a.equipment[0] }], user_settings: [] });
-    const res = await loadCloud(client);
+    const res = await loadCloud(client, 'u1');
     expect(res.data.recipes).toHaveLength(1);
     expect(res.skipped).toBe(1);
     expect(res.empty).toBe(false);
-    const empty = await loadCloud(fakeClient().client);
+    const empty = await loadCloud(fakeClient().client, 'u1');
     expect(empty.empty).toBe(true);
+  });
+
+  it('loads only the signed-in user\'s recipes', async () => {
+    const { client, calls } = fakeClient({ recipes: [] });
+    await loadCloud(client, 'u1');
+    expect(calls).toContainEqual({ table: 'recipes', op: 'eq', arg: ['user_id', 'u1'] });
+  });
+});
+
+describe('loadPublicRecipes', () => {
+  it('returns every user\'s valid recipes with the owner', async () => {
+    const a = base();
+    const { client } = fakeClient({ recipes: [{ user_id: 'u1', owner_name: 'Ana', data: a.recipes[0] }, { user_id: 'u2', owner_name: null, data: { name: 'broken' } }] });
+    const res = await loadPublicRecipes(client);
+    expect(res).toHaveLength(1);
+    expect(res[0]).toMatchObject({ ownerId: 'u1', ownerName: 'Ana', recipe: { id: a.recipes[0].id } });
   });
 });
