@@ -11,6 +11,8 @@ import { MethodsPage } from './pages/Methods';
 import { PublicRecipeList, PublicRecipeView } from './pages/PublicRecipes';
 import { findStyle } from './data/styles';
 import { LangToggle, useI18n, type Dict } from './i18n';
+import { supabase } from './cloud/client';
+import { SignInButton } from './ui/SignInButton';
 
 const NAV: { route: Route; label: (t: Dict) => string; icon: typeof BookOpen; match: Route['name'][]; group: 'brew' | 'reference'; cloudOnly?: boolean }[] = [
   { route: { name: 'recipes' }, label: (t) => t.app.myRecipes, icon: FlaskConical, match: ['recipes', 'recipe', 'edit'], group: 'brew' },
@@ -22,11 +24,11 @@ const NAV: { route: Route; label: (t: Dict) => string; icon: typeof BookOpen; ma
 
 export function App() {
   const route = useRoute();
-  const { persistent, data, updateSettings, mode } = useStore();
+  const { persistent, data, updateSettings, mode, signIn } = useStore();
   const { t } = useI18n();
   const [navOpen, setNavOpen] = useState(false);
 
-  const nav = NAV.filter((n) => !n.cloudOnly || mode === 'cloud');
+  const nav = NAV.filter((n) => !n.cloudOnly || supabase);
   useEffect(() => setNavOpen(false), [route]);
   useEffect(() => {
     const r = route.name === 'edit' || route.name === 'recipe' ? data.recipes.find((x) => x.id === route.id) : null;
@@ -64,7 +66,7 @@ export function App() {
         <div className="rail-foot">
           <span>
             <span className={`dot ${persistent ? '' : 'off'}`} aria-hidden="true" />
-            {mode === 'cloud' ? t.app.savedAccount : persistent ? t.app.savedBrowser : t.app.storageBlocked}
+            {mode === 'cloud' ? t.app.savedAccount : !persistent ? t.app.storageBlocked : signIn ? t.app.draftBrowser : t.app.savedBrowser}
           </span>
           <span style={{ opacity: 0.7 }}>{t.app.counts(data.recipes.length, data.equipment.length)}</span>
         </div>
@@ -86,6 +88,7 @@ export function App() {
             </button>
           </div>
           <LangToggle />
+          <SignInButton />
           <AccountMenu />
         </header>
         {navOpen && <div style={{ position: 'fixed', inset: 0, zIndex: 50 }} onClick={() => setNavOpen(false)} aria-hidden="true" />}

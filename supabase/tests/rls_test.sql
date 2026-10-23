@@ -58,14 +58,36 @@ insert into public.equipment_profiles (id, data) values ('e1', '{"name": "Alice 
 select set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', false);
 do $$ begin assert (select count(*) from public.equipment_profiles) = 0, 'bob cannot see alice equipment'; end $$;
 
--- Anonymous visitors cannot read anything.
+-- Anonymous visitors can read recipes, but cannot write them or read anything else.
 reset role;
 set role anon;
+select set_config('request.jwt.claim.sub', '', false);
+do $$ begin assert (select count(*) from public.recipes) = 2, 'anon reads all recipes'; end $$;
 do $$
 begin
   begin
-    perform 1 from public.recipes;
-    raise exception 'anon read allowed';
+    insert into public.recipes (user_id, id, data) values ('11111111-1111-1111-1111-111111111111', 'r9', pg_temp.recipe('anon'));
+    raise exception 'anon insert allowed';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    update public.recipes set data = pg_temp.recipe('anon');
+    raise exception 'anon update allowed';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    delete from public.recipes;
+    raise exception 'anon delete allowed';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform 1 from public.equipment_profiles;
+    raise exception 'anon equipment read allowed';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform 1 from public.user_settings;
+    raise exception 'anon settings read allowed';
   exception when insufficient_privilege then null;
   end;
 end $$;

@@ -26,6 +26,8 @@ interface Store {
   mode: 'local' | 'cloud';
   account: Account | null;
   signOut: (() => void) | null;
+  /** Set for visitors who are not signed in when accounts are available; resolves to an error message or null. */
+  signIn: (() => Promise<string | null>) | null;
   /** Recipes saved in this browser (Phase 1) that can be copied into the account. */
   localImportCount: number;
   importLocal: () => void;
@@ -79,7 +81,12 @@ function readLocalRecipes(userId: string): Recipe[] {
   return (loadData().data?.recipes ?? []).filter((r) => !r.name.startsWith('Example:'));
 }
 
-export function AppStoreProvider({ children, cloud }: { children: ReactNode; cloud?: CloudConfig }) {
+/**
+ * Without `cloud` the store keeps data in this browser: the browser-only build, or a
+ * visitor who has not signed in yet (then `signIn` is set, and the drafts can be
+ * copied into the account after sign-in).
+ */
+export function AppStoreProvider({ children, cloud, signIn }: { children: ReactNode; cloud?: CloudConfig; signIn?: () => Promise<string | null> }) {
   const [init] = useState(() => (cloud ? initialCloudData(cloud) : initialData()));
   const [data, setData] = useState<AppData>(init.data);
   const [saveState, setSaveState] = useState<Store['saveState']>('saved');
@@ -182,6 +189,7 @@ export function AppStoreProvider({ children, cloud }: { children: ReactNode; clo
       mode: cloud ? 'cloud' : 'local',
       account: cloud?.account ?? null,
       signOut: cloud?.signOut ?? null,
+      signIn: cloud ? null : (signIn ?? null),
       localImportCount: localRecipes.length,
       importLocal,
       dismissLocalImport,
@@ -195,7 +203,7 @@ export function AppStoreProvider({ children, cloud }: { children: ReactNode; clo
       deleteEquipment,
       updateSettings,
     }),
-    [data, cloud, localRecipes.length, importLocal, dismissLocalImport, init.persistent, init.skipped, saveState, upsertRecipe, deleteRecipe, importRecipes, upsertEquipment, deleteEquipment, updateSettings],
+    [data, cloud, signIn, localRecipes.length, importLocal, dismissLocalImport, init.persistent, init.skipped, saveState, upsertRecipe, deleteRecipe, importRecipes, upsertEquipment, deleteEquipment, updateSettings],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

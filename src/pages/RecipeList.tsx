@@ -13,9 +13,10 @@ import { downloadPdf } from '../ui/pdfAction';
 import type { Recipe } from '../domain/types';
 import { downloadText } from '../ui/download';
 import { useI18n } from '../i18n';
+import { SignInButton } from '../ui/SignInButton';
 
 export function RecipeList() {
-  const { data, upsertRecipe, deleteRecipe, importRecipes, persistent, skipped, mode, localImportCount, importLocal, dismissLocalImport } = useStore();
+  const { data, upsertRecipe, deleteRecipe, importRecipes, persistent, skipped, mode, signIn, localImportCount, importLocal, dismissLocalImport } = useStore();
   const [q, setQ] = useState('');
   const [toDelete, setToDelete] = useState<Recipe | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -106,6 +107,12 @@ export function RecipeList() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+        {signIn && (
+          <div className="notice info" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ flex: 1, minWidth: 200 }}>{t.list.guest}</span>
+            <SignInButton />
+          </div>
+        )}
         {localImportCount > 0 && (
           <div className="notice info" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ flex: 1, minWidth: 200 }}>

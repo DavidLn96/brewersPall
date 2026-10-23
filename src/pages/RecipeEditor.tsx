@@ -18,6 +18,7 @@ import { CellLabel, moveItem, Notice, RowActions, Section } from '../ui/common';
 import { MobileStats, StatsPanel } from '../ui/StatsPanel';
 import { fmt, massL, massS, miscTimeUnit, ppgFormat } from '../ui/format';
 import { downloadPdf } from '../ui/pdfAction';
+import { SignInButton } from '../ui/SignInButton';
 import type { UnitSystem } from '../domain/units';
 
 const fermentableOptions = (t: Dict): PickerOption<FermentableCatalogItem>[] =>
@@ -36,7 +37,7 @@ const miscOptions = (t: Dict): PickerOption<MiscCatalogItem>[] => MISCS.map((m) 
 const optionsOf = <K extends string>(labels: Record<K, string>) => (Object.keys(labels) as K[]).map((value) => ({ value, label: labels[value] }));
 
 export function RecipeEditor({ id }: { id: string }) {
-  const { data, upsertRecipe, saveState, persistent, mode } = useStore();
+  const { data, upsertRecipe, saveState, persistent, mode, signIn } = useStore();
   const recipe = data.recipes.find((r) => r.id === id);
   const settings = data.settings;
   const s = settings.unitSystem;
@@ -79,7 +80,8 @@ export function RecipeEditor({ id }: { id: string }) {
           <div className="actions" style={{ marginTop: 4 }}>
             <span className="tag">{t.method[recipe.method]}</span>
             {style && <span className="tag accent">{style.code} {style.name}</span>}
-            <SaveState state={saveState} persistent={persistent} cloud={mode === 'cloud'} />
+            <SaveState state={saveState} persistent={persistent} cloud={mode === 'cloud'} draft={!!signIn} />
+            {signIn && <SignInButton label={t.editor.signInToSave} className="btn btn-sm" />}
           </div>
         </div>
         <div className="actions">
@@ -175,7 +177,7 @@ export function RecipeEditor({ id }: { id: string }) {
   );
 }
 
-function SaveState({ state, persistent, cloud }: { state: 'saved' | 'saving' | 'error'; persistent: boolean; cloud: boolean }) {
+function SaveState({ state, persistent, cloud, draft }: { state: 'saved' | 'saving' | 'error'; persistent: boolean; cloud: boolean; draft: boolean }) {
   const { t } = useI18n();
   if (!persistent)
     return (
@@ -192,7 +194,7 @@ function SaveState({ state, persistent, cloud }: { state: 'saved' | 'saving' | '
   return (
     <span className="save-state" aria-live="polite">
       {state === 'saving' ? <Loader2 size={13} aria-hidden="true" /> : <Check size={13} aria-hidden="true" />}
-      {state === 'saving' ? t.editor.saving : cloud ? t.app.savedAccount : t.app.savedBrowser}
+      {state === 'saving' ? t.editor.saving : cloud ? t.app.savedAccount : draft ? t.editor.draft : t.app.savedBrowser}
     </span>
   );
 }
